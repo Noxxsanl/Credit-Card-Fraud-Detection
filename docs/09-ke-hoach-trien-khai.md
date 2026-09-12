@@ -3,6 +3,9 @@
 Tổng 21 ngày. Phần ứng dụng chiếm khoảng 6 ngày; phần còn lại dành cho mô hình,
 phân tích và báo cáo.
 
+Tài liệu này giải thích **vì sao** lộ trình có thứ tự như vậy. Bản thao tác hằng
+ngày, tick được từng việc, nằm ở [TASKS.md](../TASKS.md).
+
 ## 1. Hiện trạng so với mục tiêu
 
 Repo hiện có:

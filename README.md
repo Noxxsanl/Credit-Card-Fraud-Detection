@@ -63,6 +63,10 @@ Script tự kiểm tra toàn vẹn: phải ra đúng 284.807 dòng, 31 cột, 49
 streamlit run app.py
 ```
 
+## Công việc
+
+Danh sách 67 việc để hoàn thành đề tài, tick được: [TASKS.md](TASKS.md).
+
 ## Tài liệu
 
 Toàn bộ đặc tả và thiết kế nằm trong [docs/](docs/) — bắt đầu từ

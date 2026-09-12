@@ -19,6 +19,7 @@ sở hữu quyết định đó — các tệp khác chỉ tham chiếu tới.
 | 08 | [Kế hoạch kiểm thử](08-ke-hoach-kiem-thu.md) | Chứng minh hệ thống đúng bằng cách nào | Tất cả |
 | 09 | [Kế hoạch triển khai](09-ke-hoach-trien-khai.md) | Ai làm gì, ngày nào, xong là thế nào | Tất cả |
 | 10 | [Vận hành và tái lập](10-van-hanh-tai-lap.md) | Chạy lại toàn bộ từ đầu bằng lệnh gì | Người chấm, người mới |
+| — | [Danh sách công việc](../TASKS.md) | Còn phải làm những gì, xong là thế nào | Người thực hiện |
 
 ## Quy ước mã định danh
 
