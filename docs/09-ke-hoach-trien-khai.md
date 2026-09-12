@@ -44,20 +44,20 @@ dùng chung cho notebook, API và kiểm thử).
 
 ### Ngày 1–2 — Nền tảng
 
-- [ ] Tải `creditcard.csv`, đặt vào `data/`, xác nhận 284.807 dòng.
-- [ ] Kiểm tra toàn vẹn theo [02 §6](02-dac-ta-du-lieu.md): giá trị thiếu, trùng lặp, phân bố nhãn.
-- [ ] Viết `01_eda.ipynb`, sinh đủ 8 biểu đồ bắt buộc.
-- [ ] Ghi nhận số dòng trùng lặp và quyết định xử lý (DS-20).
+- [x] Tải `creditcard.csv`, đặt vào `data/`, xác nhận 284.807 dòng.
+- [x] Kiểm tra toàn vẹn theo [02 §6](02-dac-ta-du-lieu.md): giá trị thiếu, trùng lặp, phân bố nhãn.
+- [x] Viết `01_eda.ipynb`, sinh đủ 8 biểu đồ bắt buộc.
+- [x] Ghi nhận số dòng trùng lặp và quyết định xử lý (DS-20) — 1.081 dòng, 19 gian lận; xem [02 §6.1](02-dac-ta-du-lieu.md).
 
 **Xong là khi:** 8 tệp PNG có trong `reports/figures/` và mỗi biểu đồ trả lời được
 một câu hỏi cụ thể, không phải vẽ cho đủ.
 
 ### Ngày 3–4 — Thống kê
 
-- [ ] Mann–Whitney U cho 30 đặc trưng, hai lớp.
-- [ ] Hiệu chỉnh Benjamini–Hochberg, ghi rõ số kiểm định còn ý nghĩa sau hiệu chỉnh.
-- [ ] Tính Cliff's delta hoặc Cohen's d, xếp hạng theo độ lớn hiệu ứng.
-- [ ] Đối chiếu xếp hạng thống kê với tương quan thô — chúng khác nhau chỗ nào và vì sao.
+- [x] Mann–Whitney U cho 30 đặc trưng, hai lớp.
+- [x] Hiệu chỉnh Benjamini–Hochberg, ghi rõ số kiểm định còn ý nghĩa sau hiệu chỉnh — 27/30 (Bonferroni chỉ giữ 24).
+- [x] Tính Cliff's delta **và** Cohen's d, xếp hạng theo độ lớn hiệu ứng — 17 đặc trưng có |d| ≥ 0,8.
+- [x] Đối chiếu xếp hạng thống kê với tương quan thô — thứ hạng trùng khít (Spearman 1,000), chỉ độ lớn bị tỷ lệ lớp dương nén xuống trần 0,33.
 
 **Xong là khi:** có bảng xếp hạng đặc trưng dùng lại được ở notebook 07 để so với SHAP.
 

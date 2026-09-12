@@ -123,6 +123,29 @@ Quy tắc kiểm tra:
 rò rỉ nhẹ nhưng có thật. Báo cáo phải nêu số dòng đã loại và số mẫu gian lận còn
 lại sau khi loại.
 
+### 6.1 Số liệu thực đo (notebook 01, giai đoạn 1)
+
+Đúng **1.081 dòng trùng lặp**, trong đó **19 dòng thuộc lớp gian lận**. Sau khi
+loại còn **283.726 dòng / 473 gian lận**, tỷ lệ dương **0,167%** (1 trên 600).
+
+Hệ quả cần nhớ: **mọi bảng kết quả của dự án tính trên 283.726 dòng, không phải
+284.807**. Các con số mốc quen thuộc của bộ dữ liệu này thường được trích từ dữ
+liệu thô nên lệch nhẹ so với số của dự án:
+
+| Mốc | Dữ liệu thô | Sau khi loại trùng lặp — **số dùng trong báo cáo** |
+|---|---|---|
+| Tỷ lệ gian lận lúc 2h | 1,713% | **1,451%** (48/3.308) |
+| Tỷ lệ gian lận lúc 10h | 0,048% | **0,048%** (8/16.548) |
+| Trung vị `Amount` gian lận / hợp lệ | 9,25 / 22,00 | **9,82 / 22,00** |
+| Trung bình `Amount` gian lận / hợp lệ | 122,21 / 88,29 | **123,87 / 88,41** |
+| Số giao dịch gian lận có `Amount = 0` | 27 | **25** |
+| Tương quan Pearson mạnh nhất (V17) | −0,326 | **−0,313** |
+| Cohen's d của V17 | −8,32 | **−8,09** |
+
+Hướng của mọi phát hiện giữ nguyên, chỉ độ lớn nhích nhẹ. Khi trích số thô để so
+với tài liệu bên ngoài thì phải nói rõ đó là số thô. Bảng đối chiếu này được sinh
+lại mỗi lần chạy `notebooks/01_eda.ipynb` §1.1.
+
 ## 7. Chiến lược chia tập
 
 **Cách chính — chia ngẫu nhiên phân tầng 80/20.** Dùng cho toàn bộ bảng kết quả

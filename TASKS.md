@@ -12,7 +12,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | Giai đoạn | Việc | Xong | Trạng thái |
 |---|---|---|---|
 | 0. Nền tảng mã nguồn | 10 | 10 | ✅ |
-| 1. EDA và thống kê | 5 | 0 | |
+| 1. EDA và thống kê | 5 | 5 | ✅ |
 | 2. Mô hình cơ sở | 4 | 0 | |
 | 3. Chiến lược mất cân bằng | 4 | 0 | |
 | 4. Tinh chỉnh và kiểm chứng | 5 | 0 | |
@@ -23,7 +23,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 8. Giao diện | 7 | 0 | |
 | 9. Đóng gói | 5 | 0 | |
 | 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **10** | **15%** |
+| **Tổng** | **67** | **15** | **22%** |
 
 ---
 
@@ -44,15 +44,46 @@ Phần này đã hoàn thành. Giữ lại để biết cái gì đã có mà kh
 
 ---
 
-## Giai đoạn 1 — EDA và thống kê (ngày 1–4)
+## Giai đoạn 1 — EDA và thống kê (ngày 1–4) ✅
 
-- [ ] **T-11** `notebooks/01_eda.ipynb`: nạp qua `load_prepared()`, in báo cáo toàn vẹn, ghi nhận 1.081 dòng trùng lặp — *xong là khi:* notebook chạy từ đầu đến cuối trong kernel sạch.
-- [ ] **T-12** Sinh đủ 8 biểu đồ bắt buộc vào `reports/figures/` với tiền tố `01_` — *xong là khi:* đủ 8 tệp PNG, mỗi biểu đồ có tiêu đề và nhãn trục.
-- [ ] **T-13** Viết nhận xét EDA: mỗi biểu đồ một đoạn trả lời một câu hỏi cụ thể — *xong là khi:* không có biểu đồ nào bị bỏ trống nhận xét. Ba phát hiện đã biết cần nêu: giờ 2h có tỷ lệ gian lận 1,713% so với 0,048% lúc 10h; trung vị `Amount` của gian lận (9,25) thấp hơn hợp lệ (22,00) nhưng trung bình lại cao hơn; 27 giao dịch gian lận có `Amount = 0`.
-- [ ] **T-14** `notebooks/02_statistics.ipynb`: Mann–Whitney U cho 30 đặc trưng + hiệu chỉnh Benjamini–Hochberg + Cohen's d — *xong là khi:* có bảng xếp hạng và nêu rõ số kiểm định còn ý nghĩa sau hiệu chỉnh.
-- [ ] **T-15** Lưu bảng xếp hạng ra `reports/feature_ranking.csv` để notebook 07 đối chiếu với SHAP — *xong là khi:* tệp tồn tại, có cột `cohens_d` và `p_adjusted`.
+- [x] **T-11** `notebooks/01_eda.ipynb`: nạp qua `load_prepared()`, in báo cáo toàn vẹn, ghi nhận 1.081 dòng trùng lặp — *xong là khi:* notebook chạy từ đầu đến cuối trong kernel sạch.
+- [x] **T-12** Sinh đủ 8 biểu đồ bắt buộc vào `reports/figures/` với tiền tố `01_` — *xong là khi:* đủ 8 tệp PNG, mỗi biểu đồ có tiêu đề và nhãn trục.
+- [x] **T-13** Viết nhận xét EDA: mỗi biểu đồ một đoạn trả lời một câu hỏi cụ thể — *xong là khi:* không có biểu đồ nào bị bỏ trống nhận xét. Ba phát hiện đã biết cần nêu: giờ 2h có tỷ lệ gian lận 1,713% so với 0,048% lúc 10h; trung vị `Amount` của gian lận (9,25) thấp hơn hợp lệ (22,00) nhưng trung bình lại cao hơn; 27 giao dịch gian lận có `Amount = 0`.
+- [x] **T-14** `notebooks/02_statistics.ipynb`: Mann–Whitney U cho 30 đặc trưng + hiệu chỉnh Benjamini–Hochberg + Cohen's d — *xong là khi:* có bảng xếp hạng và nêu rõ số kiểm định còn ý nghĩa sau hiệu chỉnh.
+- [x] **T-15** Lưu bảng xếp hạng ra `reports/feature_ranking.csv` để notebook 07 đối chiếu với SHAP — *xong là khi:* tệp tồn tại, có cột `cohens_d` và `p_adjusted`.
 
 > Điểm cần viết trong T-14: tương quan Pearson cao nhất chỉ −0,326 (V17) trong khi Cohen's d là −8,32. Với 0,17% mẫu dương, tương quan điểm-nhị phân bị nén xuống — cùng một cái bẫy như accuracy 99,83%.
+
+### Ghi chú khi làm xong giai đoạn 1
+
+**Các con số mốc ở T-13 và T-14 là số trên dữ liệu THÔ.** Pipeline chạy trên dữ liệu đã loại
+1.081 dòng trùng lặp (DS-20), nên số thực tế lệch nhẹ. Notebook 01 §1.1 in bảng đối chiếu hai
+cột; quy ước đã chốt: **báo cáo lấy cột "sau khi loại trùng lặp"**.
+
+| Mốc | Dữ liệu thô | Sau khi loại trùng lặp |
+|---|---|---|
+| Tỷ lệ gian lận lúc 2h | 1,713% | **1,451%** (48/3.308) |
+| Tỷ lệ gian lận lúc 10h | 0,048% | **0,048%** (8/16.548) |
+| Trung vị `Amount` gian lận | 9,25 | **9,82** (hợp lệ 22,00) |
+| Trung bình `Amount` gian lận | 122,21 | **123,87** (hợp lệ 88,41) |
+| Gian lận có `Amount = 0` | 27 | **25** |
+| Tương quan Pearson mạnh nhất (V17) | −0,326 | **−0,313** |
+| Cohen's d của V17 | −8,32 | **−8,09** |
+
+Hướng của cả ba phát hiện giữ nguyên, chỉ độ lớn nhích nhẹ. Xem thêm [docs/02 §6](docs/02-dac-ta-du-lieu.md).
+
+**Phát sinh thêm trong giai đoạn này** (không có trong kế hoạch ban đầu, nhưng cần để T-14 và
+T-15 tái lập được):
+
+- `src/stats.py` — `feature_ranking()`, `benjamini_hochberg()`, `cohens_d()`,
+  `cliffs_delta_from_u()`, `pearson_from_cohens_d()`.
+- `tests/test_stats.py` — 24 ca, chốt thủ tục BH và công thức effect size bằng ví dụ tính tay được.
+- `src/plots.py` — bổ sung nhãn trục còn thiếu ở EDA 4, 5, 6, 7, 8 để đạt điều kiện của T-12.
+- Ba hình phụ tiền tố `02_` trong `reports/figures/` (không tính vào 8 hình bắt buộc của T-12).
+
+**Kết quả chính:** 27/30 kiểm định còn ý nghĩa sau hiệu chỉnh BH (Bonferroni chỉ giữ 24);
+17 đặc trưng có |Cohen's d| ≥ 0,8. Cohen's d và Cliff's delta bất đồng về thứ hạng
+(Spearman 0,921): V17 hạng 1 theo d nhưng hạng 11 theo delta — để T-32 đối chiếu với SHAP.
 
 ---
 

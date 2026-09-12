@@ -122,6 +122,8 @@ def plot_correlation_matrix(df, ax=None):
     columns = [*V_COLUMNS, "Amount"]
     corr = df[columns].corr()
     sns.heatmap(corr, cmap="RdBu_r", center=0, vmin=-1, vmax=1, ax=ax, square=True, cbar_kws={"shrink": 0.7})
+    ax.set_xlabel("Đặc trưng")
+    ax.set_ylabel("Đặc trưng")
     ax.set_title("Ma trận tương quan giữa các đặc trưng")
     return ax.figure
 
@@ -138,6 +140,7 @@ def plot_target_correlation(df, top_n=15, ax=None):
     ax.barh(ranked.index[::-1], ranked.to_numpy()[::-1], color=colors[::-1])
     ax.axvline(0, c="black", lw=0.8)
     ax.set_xlabel(f"Tương quan Pearson với {TARGET}")
+    ax.set_ylabel("Đặc trưng")
     ax.set_title(f"{top_n} đặc trưng tương quan mạnh nhất với nhãn")
     return ax.figure
 
@@ -167,7 +170,8 @@ def plot_feature_densities(df, features=None, top_n=6, axes=None):
                 warn_singular=False,
             )
         ax.set_title(feature)
-        ax.set_xlabel("")
+        ax.set_xlabel("Giá trị")
+        ax.set_ylabel("Mật độ")
         ax.legend(fontsize="small")
 
     for ax in np.ravel(axes)[len(features):]:
@@ -186,6 +190,7 @@ def plot_amount_boxplot(df, ax=None):
     data = [df.loc[df[TARGET] == label, "Amount"] for label in (0, 1)]
     ax.boxplot(data, tick_labels=[CLASS_LABELS[0], CLASS_LABELS[1]], showfliers=True)
     ax.set_yscale("symlog")
+    ax.set_xlabel("Nhãn")
     ax.set_ylabel("Amount (thang symlog)")
     ax.set_title("Số tiền giao dịch theo nhãn")
     return ax.figure
@@ -222,6 +227,8 @@ def plot_projection(df, n_negative=2000, random_state=42, ax=None):
             label=CLASS_LABELS[label],
             color=CLASS_PALETTE[label],
         )
+    ax.set_xlabel("Thành phần t-SNE 1")
+    ax.set_ylabel("Thành phần t-SNE 2")
     ax.set_title(f"Chiếu t-SNE ({len(fraud)} gian lận + {len(legit)} hợp lệ)")
     ax.legend()
     return ax.figure

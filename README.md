@@ -47,15 +47,15 @@ Script tự kiểm tra toàn vẹn: phải ra đúng 284.807 dòng, 31 cột, 49
 
 ## Quy trình
 
-| Notebook | Nội dung |
-|---|---|
-| `01_eda.ipynb` | Khảo sát dữ liệu, phân phối nhãn, Amount, Time |
-| `02_statistics.ipynb` | Kiểm định thống kê giữa hai nhóm giao dịch |
-| `03_baseline.ipynb` | Logistic Regression / Decision Tree làm mốc |
-| `04_imbalance_strategies.ipynb` | class_weight, undersampling, SMOTE |
-| `05_advanced_models.ipynb` | Random Forest, XGBoost/LightGBM, tuning → `best_model.pkl` |
-| `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ |
-| `07_explainability.ipynb` | SHAP, feature importance, phân tích lỗi |
+| Notebook | Nội dung | Trạng thái |
+|---|---|---|
+| `01_eda.ipynb` | Toàn vẹn dữ liệu, 8 biểu đồ EDA bắt buộc → `reports/figures/01_*.png` | ✅ |
+| `02_statistics.ipynb` | Mann–Whitney U, hiệu chỉnh BH, Cohen's d và Cliff's delta → `reports/feature_ranking.csv` | ✅ |
+| `03_baseline.ipynb` | Logistic Regression / Decision Tree làm mốc | |
+| `04_imbalance_strategies.ipynb` | class_weight, undersampling, SMOTE | |
+| `05_advanced_models.ipynb` | Random Forest, XGBoost/LightGBM, tuning → `best_model.pkl` | |
+| `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ | |
+| `07_explainability.ipynb` | SHAP, feature importance, phân tích lỗi | |
 
 ## Chạy demo
 
