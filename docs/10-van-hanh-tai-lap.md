@@ -7,7 +7,7 @@ viên mới, hoặc chính tác giả sau vài tháng.
 
 | Thành phần | Phiên bản | Bắt buộc cho |
 |---|---|---|
-| Python | 3.11 | Huấn luyện, API |
+| Python | 3.11 hoặc 3.12 | Huấn luyện, API (môi trường hiện tại: 3.12.5) |
 | RAM | ≥ 8 GB | SMOTE trên 227.000 dòng |
 | Ổ đĩa trống | ≥ 2 GB | Dữ liệu và hiện vật |
 | Docker Desktop | Bản mới | Chạy `db`, `api`, `web` bằng Compose |
@@ -24,11 +24,20 @@ Cách đơn giản nhất là **không cài PostgreSQL lên máy**: chỉ cần 
 ### 2.1 Môi trường Python
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # macOS / Linux
-pip install -r requirements.txt
+py -3.12 -m venv .venv           # Windows
+python3.12 -m venv .venv         # macOS / Linux
+
+.venv\Scripts\activate           # Windows
+source .venv/bin/activate        # macOS / Linux
+
+pip install -r requirements.txt pytest
 python -m ipykernel install --user --name fraud-detection
+```
+
+Kiểm tra nhanh môi trường:
+
+```bash
+python -m pytest        # phải xanh trước khi chạy notebook
 ```
 
 ### 2.2 Biến môi trường
@@ -67,24 +76,41 @@ Nếu cổng 5432 đã bị một PostgreSQL khác trên máy chiếm, đổi á
 
 ### 2.4 Dữ liệu
 
-Cách 1 — tải tay: vào https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud,
-tải `creditcard.csv`, đặt vào `data/`.
-
-Cách 2 — dùng Kaggle API (cần `~/.kaggle/kaggle.json`):
+Dùng `scripts/download_data.py`. Script tải, giải nén và **tự kiểm tra toàn vẹn**;
+tệp sai sẽ bị báo ngay chứ không âm thầm lọt vào pipeline.
 
 ```bash
-pip install kaggle
-kaggle datasets download -d mlg-ulb/creditcardfraud -p data --unzip
+python scripts/download_data.py            # qua Kaggle API, cần token
+python scripts/download_data.py --mirror   # bản sao công khai, không cần token
+python scripts/download_data.py --check    # chỉ kiểm tra tệp đang có
+python scripts/download_data.py --force    # tải lại
 ```
 
-Kiểm tra nhanh:
+**Cách 1 — Kaggle API (nguồn chính thức).** Cần token: kaggle.com → Settings →
+API → *Create New Token*, đặt `kaggle.json` vào `C:\Users\<tên>\.kaggle\`
+(hoặc `~/.kaggle/`), hoặc đặt biến môi trường `KAGGLE_USERNAME` và `KAGGLE_KEY`.
+Nếu chưa từng bấm Download trên trang dataset, phải bấm một lần để chấp nhận
+điều khoản, nếu không API trả 403.
 
-```bash
-python -c "import pandas as pd; d=pd.read_csv('data/creditcard.csv'); print(d.shape, d.Class.sum())"
-# Kỳ vọng: (284807, 31) 492
+**Cách 2 — `--mirror`.** Tải bản sao công khai trên Hugging Face
+(`David-Egea/Creditcard-fraud-detection`) khi không có tài khoản Kaggle. Đây là
+nguồn thứ cấp do bên thứ ba đăng lại, nên phần kiểm tra toàn vẹn là bắt buộc —
+script đối chiếu số dòng, số cột, số mẫu gian lận và SHA-256.
+
+**Cách 3 — tải tay.** Vào https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud,
+tải `creditcard.csv`, đặt vào `data/`, rồi chạy `--check`.
+
+Tệp đúng phải cho kết quả sau:
+
+```
+Kích thước : 150.8 MB
+SHA-256    : 76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89
+Số dòng    : 284.807   Số cột: 31   Ô thiếu: 0
+Dòng trùng lặp: 1.081   Gian lận: 492 (0,173%)
 ```
 
-Nếu hai con số này không khớp, dừng lại — mọi kết quả về sau sẽ sai.
+Nếu các con số này không khớp, dừng lại — mọi kết quả về sau sẽ không so sánh
+được với báo cáo.
 
 ## 3. Chạy lại toàn bộ pipeline
 

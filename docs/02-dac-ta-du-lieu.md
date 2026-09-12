@@ -61,14 +61,22 @@ Thông tin dùng được duy nhất là **giờ trong ngày**, vì nó lặp l�
 
 ## 4. Đặc trưng đưa vào mô hình
 
-30 đặc trưng, cố định thứ tự:
+**31 đặc trưng**, cố định thứ tự (hợp đồng dữ liệu vào là 30 cột — xem §5; số 31
+là số cột đầu ra sau khi bỏ `Time` và thêm hai cột mã hoá giờ):
 
-| Đặc trưng | Nguồn | Phép biến đổi |
-|---|---|---|
-| `V1` … `V28` | Nguyên bản | Giữ nguyên |
-| `amount_scaled` | `Amount` | `RobustScaler`, fit **chỉ trên tập huấn luyện** |
-| `hour_sin` | `(Time // 3600) % 24` | `sin(2π·h/24)` |
-| `hour_cos` | `(Time // 3600) % 24` | `cos(2π·h/24)` |
+| # | Đặc trưng | Nguồn | Phép biến đổi |
+|---|---|---|---|
+| 1–28 | `V1` … `V28` | Nguyên bản | Giữ nguyên |
+| 29 | `Amount` | Nguyên bản | `RobustScaler` **trong pipeline**, fit chỉ trên tập huấn luyện |
+| 30 | `hour_sin` | `(Time // 3600) % 24` | `sin(2π·h/24)` |
+| 31 | `hour_cos` | `(Time // 3600) % 24` | `cos(2π·h/24)` |
+
+Phân công trách nhiệm: `build_features()` sinh 31 cột với `Amount` còn **nguyên
+giá trị**; việc chuẩn hoá thuộc về `make_preprocessor()` và phải nằm trong
+pipeline để chỉ học thống kê của tập huấn luyện trong từng fold (ML-04). Sau
+preprocessor, `ColumnTransformer` đưa cột đã biến đổi lên đầu, nên thứ tự cột lúc
+đó là `Amount, V1…V28, hour_sin, hour_cos` — hằng số `MODEL_FEATURE_NAMES` trong
+`src/features.py` giữ đúng thứ tự này để gán tên cho giá trị SHAP.
 
 Mã hóa giờ theo sin/cos thay vì số nguyên 0–23 để mô hình hiểu 23 giờ và 0 giờ là
 kề nhau. Nếu giữ số nguyên, mô hình tuyến tính coi hai mốc đó cách nhau 23 đơn vị.

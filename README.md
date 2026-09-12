@@ -35,7 +35,15 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Tải `creditcard.csv` từ Kaggle và đặt vào `data/`.
+Tải dữ liệu:
+
+```bash
+python scripts/download_data.py            # qua Kaggle API (cần ~/.kaggle/kaggle.json)
+python scripts/download_data.py --mirror   # bản sao công khai, không cần token
+python scripts/download_data.py --check    # kiểm tra tệp đang có
+```
+
+Script tự kiểm tra toàn vẹn: phải ra đúng 284.807 dòng, 31 cột, 492 mẫu gian lận.
 
 ## Quy trình
 

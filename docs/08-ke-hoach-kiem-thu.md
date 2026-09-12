@@ -65,10 +65,10 @@ Nếu máy không có sẵn PostgreSQL, chạy riêng dịch vụ `db`:
 | Mã | Ca kiểm thử | Kỳ vọng |
 |---|---|---|
 | TC-01 | **Kiểm thử vàng**: 20 dòng mẫu cố định qua `build_features()` | Khớp chính xác ma trận đặc trưng đã lưu kèm, sai số < 1e-9 |
-| TC-02 | Thứ tự cột đầu ra | Khớp `FEATURE_ORDER`, đúng 30 cột |
+| TC-02 | Thứ tự cột đầu ra | Khớp `FEATURE_ORDER`, đúng 31 cột; không phụ thuộc thứ tự cột đầu vào |
 | TC-03 | `Time = 0` và `Time = 86399` | `hour` bằng 0 và 23; `hour_sin/cos` nằm trong [-1, 1] |
 | TC-04 | Tính tuần hoàn của giờ | Khoảng cách Euclid giữa (23h) và (0h) nhỏ hơn giữa (23h) và (12h) |
-| TC-05 | Cột `Time` thô không có mặt trong đầu ra | Khẳng định `'Time' not in columns` (ML-07) |
+| TC-05 | Cột `Time` thô không có mặt trong đầu ra | Khẳng định `Time` vắng mặt; dịch `Time` đi trọn ngày không làm đổi đặc trưng (ML-07) |
 | TC-06 | Đầu vào thiếu cột | Ném ngoại lệ nêu đúng tên cột thiếu |
 
 TC-01 là lưới an toàn chống lệch train/serve (xem [03 §4](03-thiet-ke-kien-truc.md)).
