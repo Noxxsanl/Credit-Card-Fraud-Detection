@@ -288,6 +288,27 @@ def plot_roc_curve(y_true, y_scores, label="model", ax=None):
     return ax.figure
 
 
+def plot_roc_curves(curves, y_true=None, ax=None):
+    """Vẽ chồng nhiều đường ROC — bản sinh đôi của ``plot_pr_curves``.
+
+    Có mặt để đặt ROC cạnh PR trên cùng một bộ mô hình: ROC làm cả ba trông gần
+    như nhau còn PR tách chúng ra, và đó chính là bằng chứng cho G-2 (04 §5.2).
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(6, 5))
+
+    for name, scores in curves.items():
+        fpr, tpr, _ = roc_curve(y_true, scores)
+        ax.plot(fpr, tpr, label=name, lw=1.6)
+
+    ax.plot([0, 1], [0, 1], ls="--", c="grey", lw=1, label="ngẫu nhiên")
+    ax.set_xlabel("Tỷ lệ dương tính giả")
+    ax.set_ylabel("Tỷ lệ dương tính thật")
+    ax.set_title("Đường ROC")
+    ax.legend(fontsize="small")
+    return ax.figure
+
+
 def plot_confusion(y_true, y_pred, ax=None):
     """Bốn con số tuyệt đối — không giấu được gì."""
     if ax is None:
@@ -297,6 +318,8 @@ def plot_confusion(y_true, y_pred, ax=None):
     ConfusionMatrixDisplay(matrix, display_labels=list(CLASS_LABELS.values())).plot(
         ax=ax, colorbar=False, values_format=","
     )
+    ax.set_xlabel("Nhãn dự đoán")
+    ax.set_ylabel("Nhãn thật")
     ax.set_title("Ma trận nhầm lẫn")
     return ax.figure
 

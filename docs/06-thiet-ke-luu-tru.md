@@ -479,7 +479,7 @@ với điểm hiện hành.
 | `model.joblib` (XGBoost 500 cây) | 5–15 MB |
 | `explainer.joblib` | 1–5 MB |
 | `metrics.json` kèm `test_scores` | 3–8 MB |
-| `test_set.parquet` | Khoảng 10 MB |
+| `test_set.parquet` | **15,4 MB** (đo thực tế; V1–V28 là float64 sau PCA nên nén gần như không ăn thua — snappy 15,4 MB, brotli 14,1 MB) |
 
 NFR-05 (< 1 GB) đặt cho tiến trình API. Container `db` được tính riêng và ở mức
 khoảng 250 MB — nêu rõ khi báo cáo kết quả đo.

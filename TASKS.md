@@ -13,7 +13,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 |---|---|---|---|
 | 0. Nền tảng mã nguồn | 10 | 10 | ✅ |
 | 1. EDA và thống kê | 5 | 5 | ✅ |
-| 2. Mô hình cơ sở | 4 | 0 | |
+| 2. Mô hình cơ sở | 4 | 4 | ✅ |
 | 3. Chiến lược mất cân bằng | 4 | 0 | |
 | 4. Tinh chỉnh và kiểm chứng | 5 | 0 | |
 | 5. Ngưỡng, chi phí, SHAP | 6 | 0 | |
@@ -23,7 +23,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 8. Giao diện | 7 | 0 | |
 | 9. Đóng gói | 5 | 0 | |
 | 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **15** | **22%** |
+| **Tổng** | **67** | **19** | **28%** |
 
 ---
 
@@ -87,12 +87,44 @@ T-15 tái lập được):
 
 ---
 
-## Giai đoạn 2 — Mô hình cơ sở (ngày 5–7)
+## Giai đoạn 2 — Mô hình cơ sở (ngày 5–7) ✅
 
-- [ ] **T-16** `notebooks/03_baseline.ipynb`: chia phân tầng 80/20, lưu `data/test_set.parquet` — *xong là khi:* tập test có đúng 95 mẫu gian lận (sau khi loại trùng lặp).
-- [ ] **T-17** Mô hình rỗng luôn dự đoán 0 — *xong là khi:* có con số accuracy 99,83% đưa vào báo cáo làm bằng chứng cho G-2.
-- [ ] **T-18** Logistic Regression và Decision Tree không xử lý mất cân bằng — *xong là khi:* có bảng mốc so sánh.
-- [ ] **T-19** Bảng đối chiếu accuracy / PR-AUC / Recall / Precision cho ba mô hình — *xong là khi:* bảng cho thấy accuracy gần như không phân biệt được chúng còn PR-AUC thì có.
+- [x] **T-16** `notebooks/03_baseline.ipynb`: chia phân tầng 80/20, lưu `data/test_set.parquet` — *xong là khi:* tập test có đúng 95 mẫu gian lận (sau khi loại trùng lặp).
+- [x] **T-17** Mô hình rỗng luôn dự đoán 0 — *xong là khi:* có con số accuracy 99,83% đưa vào báo cáo làm bằng chứng cho G-2.
+- [x] **T-18** Logistic Regression và Decision Tree không xử lý mất cân bằng — *xong là khi:* có bảng mốc so sánh.
+- [x] **T-19** Bảng đối chiếu accuracy / PR-AUC / Recall / Precision cho ba mô hình — *xong là khi:* bảng cho thấy accuracy gần như không phân biệt được chúng còn PR-AUC thì có.
+
+### Ghi chú khi làm xong giai đoạn 2
+
+**Bảng mốc** (tập kiểm thử 56.746 dòng / 95 gian lận, τ = 0,5 chưa tối ưu):
+
+| mô hình | accuracy | PR-AUC | ROC-AUC | recall | precision | bắt được |
+|---|---|---|---|---|---|---|
+| mô hình rỗng | 99,8326% | 0,00167 | 0,5000 | 0,000 | — | 0/95 |
+| logistic regression | 99,9154% | 0,6961 [0,598–0,791] | 0,9577 | 0,600 | 0,851 | 57/95 |
+| decision tree | 99,9383% | 0,6275 [0,522–0,737] | 0,8746 | 0,716 | 0,895 | 68/95 |
+
+**Bằng chứng cho G-2 mạnh hơn dự kiến.** Accuracy không chỉ *không phân biệt* được ba mô hình
+(chênh 0,11 điểm phần trăm) mà còn **xếp hạng ngược**: cây có accuracy cao hơn hồi quy
+(99,9383% so với 99,9154%) nhưng PR-AUC lại thấp hơn (0,6275 so với 0,6961). PR-AUC chênh
+**416 lần** giữa mô hình tệ nhất và tốt nhất.
+
+**Chưa được tuyên bố mô hình nào thắng.** Bootstrap hiệu PR-AUC theo cặp (04 §5.4) cho
+`+0,069 [−0,031, +0,158]` — khoảng tin cậy **chứa 0**. Hồi quy thắng ở 92% số lần lặp, đủ để
+nói "có xu hướng nhỉnh hơn", không đủ để kết luận. Quy tắc này phải áp lại cho bảng 20 tổ hợp
+ở T-20.
+
+**Phát hiện đáng mang sang giai đoạn 5.** Decision Tree `max_depth=6` chỉ phát ra **8 điểm rủi
+ro khác nhau** (hồi quy: 56.537), nên đường PR của nó là cầu thang 9 điểm. Đó là lý do cơ học
+khiến nó thua ở PR-AUC dù thắng ở τ = 0,5 — và là cảnh báo rằng **không thể tối ưu ngưỡng trên
+một mô hình chỉ có 8 bậc**. Mô hình cuối cùng bắt buộc phải thuộc họ ensemble.
+
+**Phát sinh thêm:** `src/plots.py` thêm `plot_roc_curves()` (bản sinh đôi của `plot_pr_curves`,
+để đặt ROC cạnh PR trên cùng bộ mô hình) và nhãn trục tiếng Việt cho `plot_confusion()`.
+Hiện vật mới: `data/test_set.parquet` (15,4 MB), `reports/baseline_results.csv`, 4 hình `03_*`.
+
+**Còn cách mục tiêu:** AC-M1 cần PR-AUC ≥ 0,75 (đang 0,696), AC-M2 cần recall ≥ 0,75
+(đang 0,60 và 0,72).
 
 ---
 

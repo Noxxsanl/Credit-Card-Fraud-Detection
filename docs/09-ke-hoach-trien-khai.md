@@ -73,10 +73,10 @@ gian nhất về sau; đừng rút ngắn.
 
 ### Ngày 6–7 — Mô hình cơ sở
 
-- [ ] Chia tập phân tầng 80/20, lưu `test_set.parquet`.
-- [ ] Mô hình rỗng (luôn dự đoán 0) — để có con số accuracy 99,83% đưa vào báo cáo.
-- [ ] Logistic Regression và Decision Tree, không xử lý mất cân bằng.
-- [ ] Bảng mốc: accuracy, PR-AUC, ROC-AUC, Recall, Precision cạnh nhau.
+- [x] Chia tập phân tầng 80/20, lưu `test_set.parquet` — tập kiểm thử 56.746 dòng / 95 gian lận.
+- [x] Mô hình rỗng (luôn dự đoán 0) — accuracy **99,8326%**, bỏ lọt toàn bộ 95 vụ.
+- [x] Logistic Regression và Decision Tree, không xử lý mất cân bằng — PR-AUC 0,696 và 0,628.
+- [x] Bảng mốc: accuracy, PR-AUC, ROC-AUC, Recall, Precision cạnh nhau — accuracy xếp hạng **ngược** với PR-AUC.
 
 **Xong là khi:** bảng cho thấy rõ accuracy không phân biệt được các mô hình còn
 PR-AUC thì có — đây là bằng chứng cho G-2.
