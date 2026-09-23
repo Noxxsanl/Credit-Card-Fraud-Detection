@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import time
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,12 +21,21 @@ from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
 from imblearn.under_sampling import RandomUnderSampler
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import StratifiedKFold, cross_val_predict, cross_validate
+from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.model_selection import StratifiedKFold, cross_val_predict
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 
-from .config import CV_FOLDS, RANDOM_STATE
+from .config import (
+    CV_FOLDS,
+    DATASET_DAYS,
+    DEFAULT_COST_FN,
+    DEFAULT_COST_FP,
+    RANDOM_STATE,
+    TEST_SIZE,
+)
 from .features import make_preprocessor
+from .threshold import metrics_at_threshold, pick_threshold
 
 #: Tỷ lệ lớp thiểu số sau khi lấy mẫu lại. KHÔNG đưa về 1:1 — cân bằng hoàn toàn
 #: làm méo xác suất tiên nghiệm rất mạnh, mô hình trả xác suất lệch cao và
@@ -191,60 +201,214 @@ def oof_scores(pipeline, X, y, *, cv=None, random_state: int = RANDOM_STATE) -> 
     return probabilities[:, 1]
 
 
+#: Thứ tự cột của bảng kết quả, khớp định dạng bắt buộc ở 04 §3.3
+GRID_COLUMNS = [
+    "model",
+    "strategy",
+    "pr_auc_mean",
+    "pr_auc_std",
+    "roc_auc_mean",
+    "roc_auc_std",
+    "threshold",
+    "recall",
+    "precision",
+    "f1",
+    "tp",
+    "fp",
+    "fn",
+    "alerts_per_day",
+    "expected_cost",
+    "n_distinct_scores",
+    "seconds_per_fold",
+    "total_seconds",
+]
+
+
+def _fold_metrics(y, scores, cv, X) -> tuple[list[float], list[float]]:
+    """PR-AUC và ROC-AUC của từng fold, tính lại từ điểm out-of-fold.
+
+    ``cross_val_predict`` không trả chỉ số theo fold, nhưng ``cv`` là
+    ``StratifiedKFold`` có ``random_state`` cố định nên gọi ``split`` lần nữa cho
+    đúng các fold mà nó đã dùng. Nhờ vậy chỉ cần MỘT lượt huấn luyện mà vẫn có độ
+    lệch chuẩn giữa các fold — con số mà 04 §3.3 bắt buộc phải báo cáo.
+    """
+    y = np.asarray(y)
+    pr_auc, roc_auc = [], []
+    for _, test_idx in cv.split(X, y):
+        pr_auc.append(float(average_precision_score(y[test_idx], scores[test_idx])))
+        roc_auc.append(float(roc_auc_score(y[test_idx], scores[test_idx])))
+    return pr_auc, roc_auc
+
+
+def _load_checkpoint(path):
+    """Đọc bảng đã chạy dở và ma trận điểm kèm theo, nếu có."""
+    done, scores = pd.DataFrame(), {}
+    if path is None:
+        return done, scores
+
+    path = Path(path)
+    if path.exists():
+        done = pd.read_csv(path)
+    npz = path.with_suffix(".npz")
+    if npz.exists():
+        with np.load(npz) as data:
+            scores = {key: data[key] for key in data.files}
+    return done, scores
+
+
+def _save_checkpoint(path, rows, scores):
+    """Ghi lại ngay sau mỗi tổ hợp — lưới này chạy 1–3 giờ, mất giữa chừng là mất hết."""
+    if path is None:
+        return
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(path, index=False, encoding="utf-8")
+    if scores:
+        np.savez_compressed(path.with_suffix(".npz"), **scores)
+
+
 def run_grid(
     X,
     y,
     *,
     models=DEFAULT_MODELS,
     strategies=DEFAULT_STRATEGIES,
+    model_params: dict | None = None,
     cv=None,
+    criterion: str = "min_expected_cost",
+    cost_fn: float = DEFAULT_COST_FN,
+    cost_fp: float = DEFAULT_COST_FP,
+    sample_fraction: float = 1.0 - TEST_SIZE,
+    days: float = DATASET_DAYS,
     random_state: int = RANDOM_STATE,
+    checkpoint_path=None,
+    resume: bool = True,
+    return_scores: bool = False,
     verbose: bool = True,
-) -> pd.DataFrame:
+):
     """Chạy toàn bộ lưới và trả về bảng kết quả trung tâm của báo cáo (FR-05).
 
     Ghi lại **mọi** tổ hợp, kể cả những cấu hình cho kết quả kém — phần so sánh
     mới là trọng tâm đề tài, không phải riêng mô hình thắng cuộc (US-10).
+
+    Mỗi tổ hợp chỉ huấn luyện **một lượt**. ``cross_val_predict`` cho điểm
+    out-of-fold, và từ đó suy ra tất cả phần còn lại: chỉ số theo fold (để có độ
+    lệch chuẩn), ngưỡng τ\\* theo tiêu chí chi phí, rồi recall/precision/F1 tại
+    τ\\* đó. Cách cũ — ``cross_validate`` để lấy chỉ số rồi ``cross_val_predict``
+    để lấy điểm — phải huấn luyện hai lượt, tức gấp đôi 1–3 giờ.
+
+    τ\\* được chọn trên chính điểm out-of-fold chứ không đụng tập kiểm thử (ML-08).
+
+    Tham số đáng chú ý
+    ------------------
+    model_params
+        Tham số ghi đè theo từng mô hình, dạng ``{"xgboost": {"n_estimators": 100}}``.
+        Có mặt để dùng phương án dự phòng đã ghi sẵn ở T-20: nếu lưới vượt 3 giờ
+        thì hạ ``n_estimators`` xuống 100 cho riêng hai mô hình ensemble và nêu
+        rõ trong báo cáo. Mô hình không có tên trong dict thì giữ cấu hình gốc.
+    sample_fraction
+        Phần dữ liệu mà ``X`` chiếm trong toàn luồng, dùng để quy đổi số cảnh báo
+        mỗi ngày. Mặc định 0,8 vì lưới chạy trên tập huấn luyện.
+    checkpoint_path
+        Đường dẫn CSV. Sau **mỗi** tổ hợp, bảng hiện có được ghi lại và ma trận
+        điểm out-of-fold ghi vào tệp ``.npz`` cùng tên. Với ``resume=True``,
+        những tổ hợp đã có trong tệp sẽ được bỏ qua.
+    return_scores
+        Trả thêm ``dict`` ánh xạ ``"{model}__{strategy}"`` sang mảng điểm
+        out-of-fold — đầu vào cho hình PR chồng của T-21.
     """
     cv = cv or make_cv(random_state=random_state)
     pos_weight = imbalance_ratio(y)
-    scoring = {"pr_auc": "average_precision", "roc_auc": "roc_auc"}
+    y_array = np.asarray(y)
 
-    rows = []
+    da_chay, scores = (_load_checkpoint(checkpoint_path) if resume else (pd.DataFrame(), {}))
+    rows = da_chay.to_dict("records") if not da_chay.empty else []
+    xong = {(r["model"], r["strategy"]) for r in rows}
+    if verbose and xong:
+        print(f"Nối tiếp từ điểm lưu: đã có {len(xong)}/{len(models) * len(strategies)} tổ hợp.\n")
+
+    tong = len(models) * len(strategies)
+    bat_dau_luoi = time.perf_counter()
+
     for model in models:
         for strategy in strategies:
+            thu_tu = len(rows) + 1
+            if (model, strategy) in xong:
+                continue
+
             pipeline = build_pipeline(
-                model, strategy, pos_weight=pos_weight, random_state=random_state
+                model,
+                strategy,
+                pos_weight=pos_weight,
+                random_state=random_state,
+                **(model_params or {}).get(model, {}),
             )
+
             started = time.perf_counter()
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
-                results = cross_validate(
-                    pipeline, X, y, cv=cv, scoring=scoring, error_score="raise"
-                )
+                oof = cross_val_predict(
+                    pipeline, X, y, cv=cv, method="predict_proba"
+                )[:, 1]
             elapsed = time.perf_counter() - started
 
-            row = {
+            pr_auc, roc_auc = _fold_metrics(y_array, oof, cv, X)
+
+            nguong = pick_threshold(
+                y_array,
+                oof,
+                criterion,
+                cost_fn=cost_fn,
+                cost_fp=cost_fp,
+                sample_fraction=sample_fraction,
+                days=days,
+            )
+            met = metrics_at_threshold(
+                y_array,
+                oof,
+                nguong,
+                cost_fn=cost_fn,
+                cost_fp=cost_fp,
+                sample_fraction=sample_fraction,
+                days=days,
+            )
+
+            rows.append({
                 "model": model,
                 "strategy": strategy,
-                "pr_auc_mean": float(np.mean(results["test_pr_auc"])),
-                "pr_auc_std": float(np.std(results["test_pr_auc"])),
-                "roc_auc_mean": float(np.mean(results["test_roc_auc"])),
-                "roc_auc_std": float(np.std(results["test_roc_auc"])),
-                "fit_seconds": float(np.mean(results["fit_time"])),
+                "pr_auc_mean": float(np.mean(pr_auc)),
+                "pr_auc_std": float(np.std(pr_auc)),
+                "roc_auc_mean": float(np.mean(roc_auc)),
+                "roc_auc_std": float(np.std(roc_auc)),
+                "threshold": met.threshold,
+                "recall": met.recall,
+                "precision": met.precision,
+                "f1": met.f1,
+                "tp": met.tp,
+                "fp": met.fp,
+                "fn": met.fn,
+                "alerts_per_day": met.alerts_per_day,
+                "expected_cost": met.expected_cost,
+                "n_distinct_scores": int(np.unique(oof).size),
+                "seconds_per_fold": elapsed / cv.get_n_splits(),
                 "total_seconds": elapsed,
-            }
-            rows.append(row)
+            })
+            scores[f"{model}__{strategy}"] = oof
+            _save_checkpoint(checkpoint_path, rows, scores)
 
             if verbose:
+                troi = time.perf_counter() - bat_dau_luoi
+                con_lai = (tong - thu_tu) * troi / max(thu_tu - len(xong), 1)
                 print(
-                    f"{model:20s} {strategy:14s} "
-                    f"PR-AUC {row['pr_auc_mean']:.4f} ± {row['pr_auc_std']:.4f}  "
-                    f"({elapsed:5.1f}s)"
+                    f"[{thu_tu:2d}/{tong}] {model:20s} {strategy:12s} "
+                    f"PR-AUC {np.mean(pr_auc):.4f} ± {np.std(pr_auc):.4f}  "
+                    f"R@τ* {met.recall:.3f}  P@τ* {met.precision:.3f}  "
+                    f"({elapsed / 60:5.1f} phút, còn khoảng {con_lai / 60:.0f} phút)"
                 )
 
-    return (
-        pd.DataFrame(rows)
+    table = (
+        pd.DataFrame(rows)[GRID_COLUMNS]
         .sort_values("pr_auc_mean", ascending=False)
         .reset_index(drop=True)
     )
+    return (table, scores) if return_scores else table

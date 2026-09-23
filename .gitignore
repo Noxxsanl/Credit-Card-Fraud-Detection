@@ -25,3 +25,6 @@ data/sample_pool.json
 .env
 backup/
 .pytest_cache
+
+# Diem out-of-fold cua luoi 20 to hop (~30 MB), sinh lai tu notebook 04
+reports/*.npz

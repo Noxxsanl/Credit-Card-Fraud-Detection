@@ -45,6 +45,14 @@ python scripts/download_data.py --check    # kiểm tra tệp đang có
 
 Script tự kiểm tra toàn vẹn: phải ra đúng 284.807 dòng, 31 cột, 492 mẫu gian lận.
 
+Chạy lưới 20 tổ hợp của notebook 04 (khoảng 20–40 phút, có điểm lưu nên ngắt được):
+
+```bash
+python scripts/run_grid.py --smoke    # thử nhanh trên 12.000 dòng
+python scripts/run_grid.py            # chạy thật
+python scripts/run_grid.py --status   # xem tiến độ
+```
+
 ## Quy trình
 
 | Notebook | Nội dung | Trạng thái |
@@ -52,7 +60,7 @@ Script tự kiểm tra toàn vẹn: phải ra đúng 284.807 dòng, 31 cột, 49
 | `01_eda.ipynb` | Toàn vẹn dữ liệu, 8 biểu đồ EDA bắt buộc → `reports/figures/01_*.png` | ✅ |
 | `02_statistics.ipynb` | Mann–Whitney U, hiệu chỉnh BH, Cohen's d và Cliff's delta → `reports/feature_ranking.csv` | ✅ |
 | `03_baseline.ipynb` | Mô hình rỗng + Logistic Regression + Decision Tree, bảng mốc cho G-2 → `data/test_set.parquet` | ✅ |
-| `04_imbalance_strategies.ipynb` | class_weight, undersampling, SMOTE | |
+| `04_imbalance_strategies.ipynb` | Lưới 5 chiến lược × 4 mô hình → `reports/grid_results.csv` | ✅ |
 | `05_advanced_models.ipynb` | Random Forest, XGBoost/LightGBM, tuning → `best_model.pkl` | |
 | `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ | |
 | `07_explainability.ipynb` | SHAP, feature importance, phân tích lỗi | |

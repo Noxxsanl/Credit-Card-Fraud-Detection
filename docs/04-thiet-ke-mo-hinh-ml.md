@@ -127,6 +127,43 @@ Nêu trước để biết khi nào kết quả là bất thường:
 - Giảm mẫu (S3) cho recall cao nhưng precision thấp nhất — vứt đi quá nhiều thông tin.
 - Nếu thấy PR-AUC > 0,95, gần như chắc chắn có rò rỉ. Kiểm tra lại ML-01 và ML-06.
 
+### 3.5 Kết quả thực đo (notebook 04, giai đoạn 3)
+
+Lưới chạy 45,7 phút trên 226.980 dòng. Đối chiếu với năm dự báo ở §3.4:
+
+| Dự báo | Kết quả | |
+|---|---|---|
+| Boosting thắng, PR-AUC 0,80–0,87 | XGBoost 0,8549 | ✅ đúng |
+| `scale_pos_weight` ≥ SMOTE với mô hình cây, rẻ hơn | **chỉ đúng với XGBoost** | ⚠️ một nửa |
+| SMOTE giúp rõ rệt cho Logistic Regression | +0,0156 so với `class_weight`, và rẻ hơn | ✅ đúng |
+| Giảm mẫu: recall cao, precision thấp nhất | recall cao ở cả 4; precision thấp nhất chỉ ở LR và DT | ⚠️ một nửa |
+| PR-AUC > 0,95 là rò rỉ | cao nhất 0,8549 | ✅ không báo động |
+
+**Đính chính dự báo thứ hai.** `scale_pos_weight` so với SMOTE, theo từng mô hình:
+
+| Mô hình | `class_weight` | SMOTE | Chênh | SMOTE đắt hơn |
+|---|---|---|---|---|
+| XGBoost | **0,8549** | 0,8529 | +0,0020 (KTC chứa 0 → hoà) | 1,24× |
+| Random Forest | 0,8404 | **0,8549** | −0,0145 (KTC không chứa 0) | 2,32× |
+| Logistic Regression | 0,7416 | **0,7572** | −0,0156 | 0,61× (SMOTE rẻ hơn) |
+| Decision Tree | 0,3586 | **0,6404** | −0,2818 | 1,11× |
+
+Dự báo đúng ở chỗ quan trọng nhất (XGBoost — mô hình được chọn), nhưng sai với Random Forest
+và sai hẳn với Decision Tree: `class_weight='balanced'` làm PR-AUC của cây sụp từ 0,6948 (không
+xử lý gì) xuống 0,3586.
+
+**S5 = S4.** SMOTE + Tomek cho mảng điểm out-of-fold **giống hệt SMOTE tới từng phần tử** ở cả
+bốn mô hình; bước Tomek xoá đúng 0 cặp và tốn 1.089 giây, tức 40% thời gian lưới. Ở tỷ lệ
+1:600, sau khi SMOTE nâng lớp dương lên 1:10 thì vùng biên vẫn quá thưa để hai điểm khác lớp
+trở thành láng giềng gần nhất của nhau. Giữ S5 trong bảng báo cáo như một kết quả âm tính, nhưng
+bỏ khỏi các lần chạy lại.
+
+**Độ mịn điểm rủi ro — tiêu chí không có trong §3.4 nhưng quyết định lựa chọn.** Số điểm rủi ro
+khác nhau trên 226.980 mẫu: XGBoost ~222.000, Logistic Regression ~226.300, **Random Forest chỉ
+200–269**, Decision Tree 23–97. Random Forest 300 cây chỉ phát ra tối đa 301 giá trị `k/300`.
+Vì §6 dựa toàn bộ vào việc dịch chuyển ngưỡng, mô hình chỉ có 200 bậc là không dùng được — đây
+là lý do chọn XGBoost thay vì Random Forest dù hai bên hoà về PR-AUC.
+
 ## 4. Tinh chỉnh siêu tham số
 
 `RandomizedSearchCV`, 30 lần thử, `cv=StratifiedKFold(5)`,

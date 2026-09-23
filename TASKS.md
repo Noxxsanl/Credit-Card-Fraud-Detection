@@ -14,7 +14,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 0. Nền tảng mã nguồn | 10 | 10 | ✅ |
 | 1. EDA và thống kê | 5 | 5 | ✅ |
 | 2. Mô hình cơ sở | 4 | 4 | ✅ |
-| 3. Chiến lược mất cân bằng | 4 | 0 | |
+| 3. Chiến lược mất cân bằng | 4 | 4 | ✅ |
 | 4. Tinh chỉnh và kiểm chứng | 5 | 0 | |
 | 5. Ngưỡng, chi phí, SHAP | 6 | 0 | |
 | 6. Xuất hiện vật | 4 | 0 | |
@@ -23,7 +23,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 8. Giao diện | 7 | 0 | |
 | 9. Đóng gói | 5 | 0 | |
 | 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **19** | **28%** |
+| **Tổng** | **67** | **23** | **34%** |
 
 ---
 
@@ -128,12 +128,74 @@ Hiện vật mới: `data/test_set.parquet` (15,4 MB), `reports/baseline_results
 
 ---
 
-## Giai đoạn 3 — Chiến lược mất cân bằng (ngày 8–10)
+## Giai đoạn 3 — Chiến lược mất cân bằng (ngày 8–10) ✅
 
-- [ ] **T-20** `notebooks/04_imbalance_strategies.ipynb`: chạy `run_grid()` đủ 20 tổ hợp — *xong là khi:* `reports/grid_results.csv` có 20 dòng. **Cảnh báo thời gian:** 1–3 giờ. Nếu vượt 3 giờ thì hạ `n_estimators` xuống 100 ở giai đoạn so sánh và ghi rõ trong báo cáo.
-- [ ] **T-21** Vẽ đường PR của 5 chiến lược chồng lên nhau cho mô hình tốt nhất — *xong là khi:* hình có đường cơ sở 0,00167.
-- [ ] **T-22** Viết thảo luận so sánh `scale_pos_weight` với SMOTE — *xong là khi:* nêu được cái nào thắng, thắng bao nhiêu, và rẻ hơn bao nhiêu về thời gian huấn luyện.
-- [ ] **T-23** Kiểm tra tính hợp lý: nếu PR-AUC > 0,95 thì dừng lại và rà rò rỉ — *xong là khi:* đã đối chiếu với dải kỳ vọng 0,80–0,87 ở [docs/04 §3.4](docs/04-thiet-ke-mo-hinh-ml.md).
+- [x] **T-20** `notebooks/04_imbalance_strategies.ipynb`: chạy `run_grid()` đủ 20 tổ hợp — *xong là khi:* `reports/grid_results.csv` có 20 dòng. **Cảnh báo thời gian:** 1–3 giờ. Nếu vượt 3 giờ thì hạ `n_estimators` xuống 100 ở giai đoạn so sánh và ghi rõ trong báo cáo.
+- [x] **T-21** Vẽ đường PR của 5 chiến lược chồng lên nhau cho mô hình tốt nhất — *xong là khi:* hình có đường cơ sở 0,00167.
+- [x] **T-22** Viết thảo luận so sánh `scale_pos_weight` với SMOTE — *xong là khi:* nêu được cái nào thắng, thắng bao nhiêu, và rẻ hơn bao nhiêu về thời gian huấn luyện.
+- [x] **T-23** Kiểm tra tính hợp lý: nếu PR-AUC > 0,95 thì dừng lại và rà rò rỉ — *xong là khi:* đã đối chiếu với dải kỳ vọng 0,80–0,87 ở [docs/04 §3.4](docs/04-thiet-ke-mo-hinh-ml.md).
+
+### Cách chạy lưới
+
+Lưới chạy ngoài notebook để kernel chết không mất trắng, và để theo dõi được tiến độ:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_grid.py --smoke    # thử 12.000 dòng, ~1 phút
+.\.venv\Scripts\python.exe scripts\run_grid.py            # thật, ~20-40 phút
+.\.venv\Scripts\python.exe scripts\run_grid.py --status   # xem tiến độ, chạy ở cửa sổ khác
+```
+
+Ngắt giữa chừng thì chạy lại đúng lệnh đó, nó nối tiếp từ tổ hợp dang dở. Xong rồi mở
+`notebooks/04_imbalance_strategies.ipynb` và Run All — notebook thấy điểm lưu nên bỏ qua
+phần huấn luyện, chạy hết trong khoảng một phút.
+
+### Ghi chú khi làm xong giai đoạn 3
+
+Lưới chạy thật **45,7 phút** (ước lượng ban đầu 20–40 phút; phần vượt là do bước Tomek, xem
+phát hiện 3). PR-AUC cao nhất **0,8549** — trong dải kỳ vọng 0,80–0,87, cách xa ngưỡng báo
+động 0,95, **T-23 đạt, không có dấu hiệu rò rỉ**.
+
+**Sáu dòng đầu bảng**
+
+| mô hình | chiến lược | PR-AUC | Recall@τ* | Precision@τ* | điểm rủi ro khác nhau | giây |
+|---|---|---|---|---|---|---|
+| xgboost | class_weight | 0,8549 ± 0,0301 | 0,852 | 0,702 | 221.674 | **36** |
+| random_forest | smote | 0,8549 ± 0,0311 | 0,855 | 0,666 | 219 | 368 |
+| random_forest | smote_tomek | 0,8549 ± 0,0311 | 0,855 | 0,666 | 219 | 652 |
+| xgboost | smote | 0,8529 ± 0,0297 | 0,852 | 0,638 | 222.236 | 45 |
+| xgboost | smote_tomek | 0,8529 ± 0,0297 | 0,852 | 0,638 | 222.236 | 326 |
+| xgboost | none | 0,8514 ± 0,0302 | 0,841 | **0,867** | 221.544 | 33 |
+
+**1. Nhóm dẫn đầu hoà nhau, không được xếp hạng.** Dải PR-AUC của 6 dòng đầu là 0,0145, hẹp
+hơn một nửa độ lệch chuẩn giữa các fold (0,030). Bootstrap hiệu theo cặp (04 §5.4): 3/4 cặp có
+khoảng tin cậy **chứa 0**. Chỉ một khác biệt là thật — `xgboost+class_weight` hơn
+`random_forest+class_weight` `+0,0152 [+0,0056, +0,0270]`.
+
+**2. T-22 — dự báo của 04 §3.4 chỉ đúng với XGBoost.** Xem [docs/04 §3.4](docs/04-thiet-ke-mo-hinh-ml.md)
+đã cập nhật số thực đo. Tóm tắt: `scale_pos_weight` hoà SMOTE ở XGBoost và rẻ hơn 1,24 lần
+(đúng dự báo); nhưng **thua thật** ở Random Forest (−0,0145, KTC không chứa 0) và Logistic
+Regression, còn ở Decision Tree thì `class_weight` làm PR-AUC **sụp từ 0,6948 xuống 0,3586**.
+Không được dùng con số trung bình gộp cả 4 mô hình (−0,0775) vì nó bị decision_tree kéo lệch.
+
+**3. SMOTE + Tomek KHÔNG khác SMOTE, mà ngốn 40% thời gian lưới.** Mảng điểm out-of-fold
+**giống hệt nhau tới từng phần tử** ở cả 4 mô hình — bước Tomek xoá đúng 0 cặp. Chi phí
+**1.089 giây = 18,2 phút** trên tổng 45,7 phút, đổi lại không một chữ số nào thay đổi. Ở tỷ lệ
+1:600, sau khi SMOTE nâng lớp dương lên 1:10 thì vùng biên vẫn quá thưa để hai điểm khác lớp
+thành láng giềng gần nhất của nhau. **Khuyến nghị bỏ S5 khỏi các lần chạy lại về sau**, nhưng
+giữ trong bảng báo cáo vì kết quả âm tính này tự nó là phát hiện.
+
+**4. Random Forest hoà PR-AUC nhưng chỉ có 200–269 điểm rủi ro khác nhau** (XGBoost: ~222.000,
+tức gấp **1.000 lần**). RF 300 cây chỉ phát ra tối đa 301 giá trị `k/300`. Đây là cùng vấn đề
+notebook 03 đã chỉ ra ở Decision Tree, nhẹ hơn nhưng vẫn đủ để loại RF khỏi giai đoạn 5 — nơi
+toàn bộ luận điểm nằm ở việc kéo ngưỡng.
+
+**Chốt mô hình cho T-24: `xgboost` + `class_weight`.** Hoà ở nhóm PR-AUC cao nhất, nhanh hơn
+10,2 lần so với `random_forest+smote` cùng điểm, và nhiều hơn 1.000 lần số điểm rủi ro khác
+nhau.
+
+**Phát sinh thêm:** `scripts/run_grid.py` (chạy lưới ngoài notebook, có điểm lưu và chạy nối
+tiếp), `run_grid()` viết lại trong `src/modeling.py` (một lượt huấn luyện thay vì hai, bảng đủ
+18 cột theo 04 §3.3, trả điểm out-of-fold), `tests/test_grid.py` 19 ca.
 
 ---
 
