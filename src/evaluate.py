@@ -166,6 +166,56 @@ def bootstrap_ci(
     }
 
 
+def bootstrap_diff(
+    y_true,
+    scores_a,
+    scores_b,
+    *,
+    n_boot: int = 1000,
+    alpha: float = 0.05,
+    random_state: int = RANDOM_STATE,
+) -> dict[str, float]:
+    """Bootstrap hiệu PR-AUC ``A − B`` **theo cặp** trên cùng một tập (04 §5.4).
+
+    Mỗi lần lặp dùng CÙNG một mẫu cho cả hai mô hình. So hai khoảng tin cậy
+    riêng lẻ thì bỏ mất tương quan giữa hai bộ điểm và luôn bảo thủ quá mức;
+    phép theo cặp mới trả lời đúng câu hỏi "A có hơn B không".
+
+    Khoảng tin cậy chứa 0 thì **không** được kết luận mô hình nào tốt hơn.
+    """
+    y_true = np.asarray(y_true).ravel()
+    scores_a = np.asarray(scores_a, dtype="float64").ravel()
+    scores_b = np.asarray(scores_b, dtype="float64").ravel()
+
+    pos_idx = np.flatnonzero(y_true == 1)
+    neg_idx = np.flatnonzero(y_true == 0)
+    rng = np.random.default_rng(random_state)
+
+    diffs = np.empty(n_boot, dtype="float64")
+    for i in range(n_boot):
+        idx = np.concatenate(
+            [
+                rng.choice(pos_idx, size=pos_idx.size, replace=True),
+                rng.choice(neg_idx, size=neg_idx.size, replace=True),
+            ]
+        )
+        diffs[i] = average_precision_score(y_true[idx], scores_a[idx]) - average_precision_score(
+            y_true[idx], scores_b[idx]
+        )
+
+    lo, hi = np.quantile(diffs, [alpha / 2, 1 - alpha / 2])
+    return {
+        "value": float(
+            average_precision_score(y_true, scores_a) - average_precision_score(y_true, scores_b)
+        ),
+        "ci_low": float(lo),
+        "ci_high": float(hi),
+        "a_wins": float(np.mean(diffs > 0)),
+        "contains_zero": bool(lo <= 0 <= hi),
+        "n_boot": n_boot,
+    }
+
+
 def headline_metrics(
     y_true,
     y_scores,

@@ -412,3 +412,133 @@ def run_grid(
         .reset_index(drop=True)
     )
     return (table, scores) if return_scores else table
+
+
+# --------------------------------------------------------------------------
+# Tinh chỉnh siêu tham số (04 §4, T-24)
+# --------------------------------------------------------------------------
+
+#: Số lần thử của RandomizedSearchCV (04 §4)
+SEARCH_N_ITER = 30
+
+#: Cột tham số trong bảng kết quả tìm kiếm, đã bỏ tiền tố ``clf__``
+SEARCH_PARAMS = (
+    "n_estimators",
+    "max_depth",
+    "learning_rate",
+    "subsample",
+    "colsample_bytree",
+    "scale_pos_weight",
+    "min_child_weight",
+)
+
+
+def search_space(y=None, *, pos_weight: float | None = None) -> dict:
+    """Không gian tìm kiếm cho XGBoost, đúng bảng ở 04 §4.
+
+    Giá trị lớn nhất của ``scale_pos_weight`` là tỷ lệ âm/dương **của chính tập
+    huấn luyện**. Con số 578 trong đặc tả là tỷ lệ trên dữ liệu thô; sau khi loại
+    trùng lặp và chia 80/20 thì tỷ lệ thật khoảng 599. Dùng số thật để lựa chọn
+    "cân bằng đầy đủ" đúng nghĩa của nó.
+    """
+    from scipy.stats import loguniform, randint, uniform
+
+    if pos_weight is None:
+        if y is None:
+            raise ValueError("Cần `y` hoặc `pos_weight` để đặt miền của scale_pos_weight.")
+        pos_weight = imbalance_ratio(y)
+
+    return {
+        "clf__n_estimators": randint(200, 801),
+        "clf__max_depth": randint(3, 9),
+        "clf__learning_rate": loguniform(0.01, 0.3),
+        "clf__subsample": uniform(0.6, 0.4),
+        "clf__colsample_bytree": uniform(0.6, 0.4),
+        "clf__scale_pos_weight": [1.0, 10.0, 100.0, round(float(pos_weight), 1)],
+        "clf__min_child_weight": randint(1, 11),
+    }
+
+
+def run_search(
+    X,
+    y,
+    *,
+    n_iter: int = SEARCH_N_ITER,
+    cv=None,
+    n_jobs: int = -1,
+    refit: bool = True,
+    random_state: int = RANDOM_STATE,
+    verbose: int = 1,
+):
+    """``RandomizedSearchCV`` trên pipeline ``xgboost`` + ``class_weight`` (T-24).
+
+    Pipeline là đúng cái đã thắng ở giai đoạn 3, nên bước tiền xử lý nằm trong
+    từng fold như mọi chỗ khác (ML-04). Chiến lược ``class_weight`` không có bước
+    lấy mẫu lại; ``scale_pos_weight`` là một trong các tham số được tìm, nên
+    giá trị 1 trong miền tương ứng với "không xử lý mất cân bằng".
+
+    Song song ở tầng ngoài: ``n_jobs`` của tìm kiếm là -1, còn XGBoost bên trong
+    chạy **một luồng**. 150 lần huấn luyện độc lập chia đều cho các lõi nhanh
+    hơn nhiều so với để mỗi lần huấn luyện tự chia luồng, và tránh 12 × 12 luồng
+    tranh nhau CPU.
+    """
+    from sklearn.model_selection import RandomizedSearchCV
+
+    cv = cv or make_cv(random_state=random_state)
+    pipeline = build_pipeline(
+        "xgboost", "class_weight", y=y, random_state=random_state, n_jobs=1
+    )
+    search = RandomizedSearchCV(
+        pipeline,
+        search_space(y),
+        n_iter=n_iter,
+        scoring="average_precision",
+        cv=cv,
+        n_jobs=n_jobs,
+        refit=refit,
+        random_state=random_state,
+        return_train_score=True,
+        verbose=verbose,
+        error_score="raise",
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        search.fit(X, y)
+    return search
+
+
+def search_table(cv_results) -> pd.DataFrame:
+    """Bảng kết quả tìm kiếm, sắp theo PR-AUC giảm dần.
+
+    Nhận ``search.cv_results_`` hoặc một DataFrame đã đọc lại từ CSV. Cột
+    ``overfit_gap`` là chênh PR-AUC train − validation: cấu hình đứng đầu mà
+    khoảng cách này quá lớn thì thứ hạng của nó kém tin cậy hơn con số cho thấy.
+    """
+    raw = pd.DataFrame(cv_results)
+    table = pd.DataFrame({
+        "rank": raw["rank_test_score"].astype(int),
+        "pr_auc_mean": raw["mean_test_score"],
+        "pr_auc_std": raw["std_test_score"],
+        "pr_auc_train": raw["mean_train_score"],
+    })
+    table["overfit_gap"] = table["pr_auc_train"] - table["pr_auc_mean"]
+    for name in SEARCH_PARAMS:
+        table[name] = raw[f"param_clf__{name}"].astype(float)
+    for name in ("n_estimators", "max_depth", "min_child_weight"):
+        table[name] = table[name].astype(int)
+    table["fit_seconds"] = raw["mean_fit_time"]
+    # Sắp ổn định: khi hoà hạng, giữ thứ tự gốc — đúng quy tắc sklearn dùng để chọn
+    # ``best_index_``, nhờ vậy dòng đầu bảng luôn là cấu hình mà ``refit`` huấn luyện
+    return table.sort_values("rank", kind="stable").reset_index(drop=True)
+
+
+def best_params_from(table: pd.DataFrame, rank: int = 0) -> dict:
+    """Tham số của dòng thứ ``rank`` trong bảng ``search_table``, dạng truyền được
+    thẳng vào ``build_pipeline(..., **params)``."""
+    row = table.iloc[rank]
+    params = {name: row[name] for name in SEARCH_PARAMS}
+    for name in ("n_estimators", "max_depth", "min_child_weight"):
+        params[name] = int(params[name])
+    for name in ("learning_rate", "subsample", "colsample_bytree", "scale_pos_weight"):
+        params[name] = float(params[name])
+    return params

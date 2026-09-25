@@ -138,13 +138,18 @@ bằng mắt.
 
 ### 3.1 Rà soát rò rỉ dữ liệu — thực hiện cuối ngày 12
 
-- [ ] Mọi `fit_resample` chỉ xuất hiện bên trong định nghĩa pipeline, không đứng riêng.
-- [ ] `train_test_split` xuất hiện **trước** mọi thao tác resample trong trình tự notebook.
-- [ ] Không có `scaler.fit(X)` trên toàn bộ dữ liệu ở bất kỳ đâu.
-- [ ] `StratifiedKFold` được dùng ở mọi chỗ có CV; tìm chuỗi `KFold(` không có tiền tố `Stratified`.
-- [ ] Ngưỡng được chọn trên dữ liệu out-of-fold hoặc tập huấn luyện, không trên tập kiểm thử (ML-08).
-- [ ] Dòng trùng lặp bị loại trước khi chia tập.
-- [ ] `random_state=42` có mặt ở mọi đối tượng có tham số này.
+- [x] Mọi `fit_resample` chỉ xuất hiện bên trong định nghĩa pipeline, không đứng riêng. — `test_leak_1_…`
+- [x] `train_test_split` xuất hiện **trước** mọi thao tác resample trong trình tự notebook. — `test_leak_2_and_6_…`
+- [x] Không có `scaler.fit(X)` trên toàn bộ dữ liệu ở bất kỳ đâu. — `test_leak_3_…`, TC-21
+- [x] `StratifiedKFold` được dùng ở mọi chỗ có CV; tìm chuỗi `KFold(` không có tiền tố `Stratified`. — `test_leak_4_…`
+- [x] Ngưỡng được chọn trên dữ liệu out-of-fold hoặc tập huấn luyện, không trên tập kiểm thử (ML-08). — `test_leak_5_…`
+- [x] Dòng trùng lặp bị loại trước khi chia tập. — `test_leak_2_and_6_…`, `test_leak_6_…`, TC-23
+- [x] `random_state=42` có mặt ở mọi đối tượng có tham số này. — `test_leak_7_…` (3 ca)
+
+**Rà soát ngày 12 (T-28): đạt 7/7.** Cả bảy ô được viết thành kiểm thử trong
+`tests/test_no_leakage.py`, quét mã trong `src/`, `scripts/`, `app.py` và ô code của mọi notebook,
+nên chúng còn đúng cả sau lần rà soát này. Lần quét tìm ra đúng một vi phạm — `app.py` lấy mẫu
+demo với `random_state=0` — đã sửa về `RANDOM_STATE`. Chi tiết ở notebook 05 §6.
 
 ### 3.2 Kiểm tra tái lập — thực hiện ngày 20
 

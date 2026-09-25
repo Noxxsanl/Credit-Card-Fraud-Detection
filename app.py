@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from src.config import RANDOM_STATE
 from src.data import TARGET, load_data
 
 MODEL_PATH = Path(__file__).parent / "models" / "best_model.pkl"
@@ -32,7 +33,7 @@ def get_sample(n=200):
         df = load_data()
     except FileNotFoundError:
         return None
-    return df.sample(n=min(n, len(df)), random_state=0).reset_index(drop=True)
+    return df.sample(n=min(n, len(df)), random_state=RANDOM_STATE).reset_index(drop=True)
 
 
 def score(model, X):

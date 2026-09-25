@@ -1,0 +1,15 @@
+Nạp dữ liệu…
+Tập huấn luyện: 226,980 dòng, 378 gian lận; tỷ lệ âm/dương 599.5
+RandomizedSearchCV: 30 lần thử × 5 fold = 150 lần huấn luyện
+------------------------------------------------------------------------------
+Fitting 5 folds for each of 30 candidates, totalling 150 fits
+------------------------------------------------------------------------------
+Xong 30 lần thử trong 19.8 phút.
+ rank  pr_auc_mean  pr_auc_std  pr_auc_train  overfit_gap  n_estimators  max_depth  learning_rate  subsample  colsample_bytree  scale_pos_weight  min_child_weight  fit_seconds
+    1       0.8538      0.0328        1.0000       0.1462           750          6         0.0897     0.9351            0.6906           10.0000                 9      68.9682
+    2       0.8536      0.0319        1.0000       0.1464           761          5         0.0539     0.9021            0.6488          599.5000                 1     135.6787
+    3       0.8532      0.0322        1.0000       0.1468           602          7         0.0563     0.8048            0.6603           10.0000                 3      82.8530
+    4       0.8531      0.0311        1.0000       0.1469           330          7         0.0477     0.6226            0.6400           10.0000                 4      50.8935
+    5       0.8530      0.0289        0.9998       0.1467           676          6         0.0203     0.9369            0.7701          100.0000                 6     121.4651
+
+Đã ghi search_results.csv và best_params.json.

@@ -181,3 +181,151 @@ def test_every_model_in_the_grid_can_fit_and_score(model, dataset):
 
     assert scores.shape == (len(X),)
     assert np.isfinite(scores).all()
+
+
+# --------------------------------------------------------------------------
+# Rà soát rò rỉ — docs/08 §3.1, T-28
+#
+# Bảy ô của danh sách kiểm được chuyển thành kiểm thử để chúng còn đúng cả sau
+# ngày 12: đọc lại mã một lần thì chỉ đúng ở thời điểm đọc. Phần lớn là quét mã
+# nguồn trong src/, scripts/, app.py và các ô code của notebook.
+# --------------------------------------------------------------------------
+
+import json
+import re
+from pathlib import Path
+
+from src.config import RANDOM_STATE
+from src.data import drop_duplicates, split_data
+
+ROOT = Path(__file__).resolve().parents[1]
+
+#: Notebook huấn luyện mô hình — nơi thứ tự nạp → loại trùng → chia → huấn luyện
+#: phải được tôn trọng. 01 và 02 chỉ làm EDA và kiểm định thống kê.
+TRAINING_NOTEBOOKS = ("03_baseline", "04_imbalance_strategies", "05_advanced_models")
+
+
+def _notebook_code(path: Path) -> str:
+    cells = json.loads(path.read_text(encoding="utf-8"))["cells"]
+    return "\n".join("".join(c["source"]) for c in cells if c["cell_type"] == "code")
+
+
+def _strip_comments(code: str) -> str:
+    """Bỏ chú thích ``#`` và docstring để chỉ quét mã thật."""
+    code = re.sub(r'"""[\s\S]*?"""', "", code)
+    return "\n".join(line.split("#", 1)[0] for line in code.splitlines())
+
+
+def _sources() -> dict[str, str]:
+    files = {}
+    for path in [*ROOT.glob("src/*.py"), *ROOT.glob("scripts/*.py"), ROOT / "app.py"]:
+        files[path.relative_to(ROOT).as_posix()] = _strip_comments(path.read_text(encoding="utf-8"))
+    for path in ROOT.glob("notebooks/*.ipynb"):
+        files[path.relative_to(ROOT).as_posix()] = _strip_comments(_notebook_code(path))
+    return files
+
+
+def _hits(pattern: str) -> list[str]:
+    found = []
+    for name, code in _sources().items():
+        for match in re.finditer(pattern, code):
+            line = code[: match.start()].count("\n") + 1
+            found.append(f"{name}:{line}: {code.splitlines()[line - 1].strip()}")
+    return found
+
+
+def test_leak_1_fit_resample_never_called_outside_a_pipeline():
+    """Ô 1 — ``fit_resample`` chỉ được gọi ngầm bởi pipeline của imblearn (ML-01)."""
+    assert _hits(r"\.fit_resample\(") == []
+
+
+@pytest.mark.parametrize("notebook", TRAINING_NOTEBOOKS)
+def test_leak_2_and_6_order_is_load_dedupe_split_then_train(notebook):
+    """Ô 2 và 6 — nạp qua ``load_prepared`` (đã loại trùng lặp) → chia tập → mới
+    tới bất kỳ lệnh huấn luyện hay lấy mẫu lại nào (ML-06, DS-20)."""
+    code = _strip_comments(_notebook_code(ROOT / "notebooks" / f"{notebook}.ipynb"))
+
+    load = code.find("load_prepared(")
+    splits = [i for i in (code.find("split_data("), code.find("temporal_split(")) if i >= 0]
+    assert splits, "notebook huấn luyện mà không chia tập?"
+    split = min(splits)
+    train_calls = [
+        m.start()
+        for m in re.finditer(r"\.fit\(|run_grid\(|run_search\(|oof_scores\(|cross_val_predict\(", code)
+    ]
+
+    assert load >= 0, "notebook huấn luyện phải nạp dữ liệu qua load_prepared()"
+    assert "load_data(" not in code, "load_data() bỏ qua bước loại trùng lặp"
+    assert load < split, "phải loại trùng lặp TRƯỚC khi chia tập"
+    assert train_calls, "notebook huấn luyện mà không có lệnh huấn luyện nào?"
+    assert split < min(train_calls), "có lệnh huấn luyện chạy trước khi chia tập"
+
+
+def test_leak_3_no_scaler_fitted_on_the_whole_dataset():
+    """Ô 3 — không có ``scaler.fit(X)`` đứng riêng; scaler chỉ sống trong pipeline (ML-04)."""
+    assert _hits(r"(?i)(scaler\w*|Scaler\(\))\.fit(_transform)?\(") == []
+
+
+def test_leak_4_every_cross_validation_is_stratified():
+    """Ô 4 — không có ``KFold(`` thiếu tiền tố ``Stratified`` (ML-02)."""
+    assert _hits(r"(?<!Stratified)KFold\(") == []
+    assert _hits(r"cv\s*=\s*\d") == [], "cv=<số> để sklearn tự chọn KFold/StratifiedKFold"
+
+
+def test_leak_5_threshold_is_never_picked_on_test_labels():
+    """Ô 5 — ngưỡng chọn trên điểm out-of-fold hoặc tập huấn luyện (ML-08)."""
+    pattern = r"(pick_threshold|threshold_alternatives|sensitivity_analysis)\(\s*\w*test"
+    assert _hits(pattern) == []
+
+
+def test_leak_6_duplicates_removed_before_split_leave_no_shared_rows():
+    """Ô 6 — loại trùng lặp rồi mới chia thì không dòng nào có mặt ở cả hai tập."""
+    rng = np.random.default_rng(5)
+    frame = pd.DataFrame({"Time": rng.uniform(0, 172_000, 300)})
+    for column in V_COLUMNS:
+        frame[column] = rng.normal(size=300)
+    frame["Amount"] = rng.lognormal(3.0, 1.0, 300)
+    frame["Class"] = (rng.random(300) < 0.1).astype(int)
+    frame = pd.concat([frame, frame.iloc[:40]], ignore_index=True)  # 40 dòng trùng
+
+    X_train, X_test, _, _ = split_data(drop_duplicates(frame, verbose=False), as_features=False)
+    shared = pd.merge(X_train, X_test, how="inner")
+
+    assert shared.empty
+
+
+def test_leak_7_every_literal_random_state_is_the_shared_seed():
+    """Ô 7 — mọi ``random_state=`` trong mã là 42 hoặc tên biến trỏ về nó (ML-05)."""
+    bad = [
+        hit for hit in _hits(r"random_state\s*=\s*(\d+)")
+        if not re.search(rf"random_state\s*=\s*{RANDOM_STATE}\b", hit)
+    ]
+    assert bad == []
+
+
+@pytest.mark.parametrize("model", DEFAULT_MODELS)
+@pytest.mark.parametrize("strategy", DEFAULT_STRATEGIES)
+def test_leak_7_every_pipeline_step_carries_the_shared_seed(model, strategy, dataset):
+    """Ô 7 — mọi tham số ``*random_state`` trong pipeline thực tế đều bằng 42."""
+    _, y = dataset
+    params = build_pipeline(model, strategy, y=y).get_params()
+    seeds = {k: v for k, v in params.items() if k.endswith("random_state")}
+
+    assert seeds, "pipeline không có bước ngẫu nhiên nào?"
+    assert set(seeds.values()) == {RANDOM_STATE}, seeds
+
+
+def test_leak_7_search_object_is_seeded_and_stratified(dataset):
+    """Ô 4 và 7 cho RandomizedSearchCV của T-24."""
+    from sklearn.model_selection import StratifiedKFold
+
+    from src.modeling import run_search
+
+    X, y = dataset
+    search = run_search(X, y, n_iter=2, n_jobs=1, refit=False, verbose=0)
+
+    assert search.random_state == RANDOM_STATE
+    assert isinstance(search.cv, StratifiedKFold)
+    assert isinstance(search.estimator, ImbPipeline)
+    seeds = {k: v for k, v in search.estimator.get_params().items() if k.endswith("random_state")}
+    assert set(seeds.values()) == {RANDOM_STATE}

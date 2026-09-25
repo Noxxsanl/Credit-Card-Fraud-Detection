@@ -184,6 +184,38 @@ Không gian tìm kiếm cho XGBoost:
 Không dùng `GridSearchCV` toàn diện: với 7 tham số, lưới đầy đủ mất hàng giờ và
 không cho kết quả tốt hơn đáng kể so với 30 lần thử ngẫu nhiên.
 
+### 4.1 Kết quả thực đo (giai đoạn 4, notebook 05)
+
+**Hai điều chỉnh so với bảng trên.** (1) Mức cao nhất của `scale_pos_weight` là **599,5**, tỷ lệ
+âm/dương thật của tập huấn luyện sau khi loại trùng lặp; 578 là tỷ lệ trên dữ liệu thô.
+(2) Tìm kiếm chạy `n_jobs=-1` ở tầng ngoài còn XGBoost chạy một luồng, để 150 lần huấn luyện chia
+đều cho các lõi. Mất 19,8 phút trên 12 lõi (`scripts/run_search.py`).
+
+**Tinh chỉnh không thắng.** Cấu hình đầu bảng đạt PR-AUC CV 0,8538 ± 0,0328, **thấp hơn** cấu hình
+khởi điểm ở §3.2 (0,8549). Năm cấu hình đầu cách nhau 0,0008, nhỏ hơn độ lệch chuẩn giữa các fold
+khoảng 40 lần. `scale_pos_weight` gần như không ảnh hưởng tới PR-AUC (trung bình 0,846 / 0,845 /
+0,844 / 0,841 cho 1 / 10 / 100 / 599,5), vì trọng số lớp dịch điểm rủi ro chứ không đổi thứ tự.
+
+**Quy tắc chọn, đặt trước khi nhìn tập test:** cấu hình tinh chỉnh chỉ thay cấu hình khởi điểm
+khi bootstrap hiệu PR-AUC theo cặp trên điểm out-of-fold (§5.4) có khoảng tin cậy không chứa 0.
+Kết quả −0,0006 [−0,0087, +0,0072] → **giữ cấu hình khởi điểm** ở §3.2.
+
+| Chỉ số trên tập kiểm thử (τ\* = 0,0232 chọn trên out-of-fold) | Giá trị [KTC 95%, bootstrap 1.000 lần] |
+|---|---|
+| PR-AUC | **0,825** [0,747 – 0,896] — AC-M1 đạt |
+| ROC-AUC | 0,977 [0,961 – 0,991] |
+| Recall@τ\* | **0,811** [0,737 – 0,884] — AC-M2 đạt (77/95) |
+| Precision@τ\* | 0,670 [0,600 – 0,752] |
+
+Cận dưới của PR-AUC và recall đều sát dưới 0,75: hai tiêu chí đạt theo ước lượng điểm, không đạt
+"chắc chắn". Báo cáo phải nêu điều này.
+
+**Chia theo thời gian (FR-10, AC-M7).** Ngày 1 → ngày 2 cho PR-AUC 0,782 [0,728 – 0,836]. Một dòng
+đối chứng (chia ngẫu nhiên, thu tập train về đúng kích thước ngày 1) cho 0,825, nên −0,043 trong
+tổng chênh −0,044 là do **độ lệch thời gian**, không phải do ít dữ liệu hơn. Tín hiệu rõ nhất là
+precision tại ngưỡng cố định: 0,670 → 0,332, tỷ lệ báo động giả trên giao dịch hợp lệ tăng 3,6
+lần. Chi tiết ở `reports/split_comparison.csv`.
+
 ## 5. Khung đánh giá
 
 ### 5.1 Metric và vai trò

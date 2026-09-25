@@ -1,0 +1,18 @@
+{
+  "model": "xgboost",
+  "strategy": "class_weight",
+  "params": {
+    "n_estimators": 675,
+    "max_depth": 5,
+    "learning_rate": 0.010815983055225093,
+    "subsample": 0.7465447373174767,
+    "colsample_bytree": 0.6028265220878869,
+    "scale_pos_weight": 599.0,
+    "min_child_weight": 10
+  },
+  "cv_pr_auc_mean": 0.7436213036726979,
+  "cv_pr_auc_std": 0.1840071753792247,
+  "n_iter": 4,
+  "search_minutes": 0.36,
+  "random_state": 42
+}

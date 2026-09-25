@@ -15,7 +15,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 1. EDA và thống kê | 5 | 5 | ✅ |
 | 2. Mô hình cơ sở | 4 | 4 | ✅ |
 | 3. Chiến lược mất cân bằng | 4 | 4 | ✅ |
-| 4. Tinh chỉnh và kiểm chứng | 5 | 0 | |
+| 4. Tinh chỉnh và kiểm chứng | 5 | 5 | ✅ |
 | 5. Ngưỡng, chi phí, SHAP | 6 | 0 | |
 | 6. Xuất hiện vật | 4 | 0 | |
 | 🚩 Mốc quyết định A/B | 1 | 0 | |
@@ -23,7 +23,7 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 8. Giao diện | 7 | 0 | |
 | 9. Đóng gói | 5 | 0 | |
 | 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **23** | **34%** |
+| **Tổng** | **67** | **28** | **42%** |
 
 ---
 
@@ -199,13 +199,80 @@ tiếp), `run_grid()` viết lại trong `src/modeling.py` (một lượt huấn
 
 ---
 
-## Giai đoạn 4 — Tinh chỉnh và kiểm chứng (ngày 11–12)
+## Giai đoạn 4 — Tinh chỉnh và kiểm chứng (ngày 11–12) ✅
 
-- [ ] **T-24** `notebooks/05_advanced_models.ipynb`: `RandomizedSearchCV` 30 lần thử, `scoring='average_precision'` — *xong là khi:* có bảng 5 cấu hình tốt nhất.
-- [ ] **T-25** Huấn luyện lại trên toàn tập train, đánh giá trên tập test — *xong là khi:* AC-M1 (PR-AUC ≥ 0,75) và AC-M2 (Recall ≥ 0,75) đạt.
-- [ ] **T-26** Bootstrap 1.000 lần cho PR-AUC, Recall, Precision — *xong là khi:* mọi chỉ số chính trong báo cáo đều có khoảng tin cậy (AC-M6).
-- [ ] **T-27** Đánh giá theo cách chia thời gian (ngày 1 train, ngày 2 test) — *xong là khi:* có bảng đối chiếu hai cách chia và một đoạn giải thích vì sao cách theo thời gian thấp hơn (AC-M7).
-- [ ] **T-28** **Rà soát rò rỉ dữ liệu** theo danh sách kiểm [docs/08 §3.1](docs/08-ke-hoach-kiem-thu.md) — *xong là khi:* cả 7 ô trong danh sách được tick và `pytest tests/test_no_leakage.py` xanh (AC-M4). **Làm ở ngày 12, không để đến ngày 20.**
+- [x] **T-24** `notebooks/05_advanced_models.ipynb`: `RandomizedSearchCV` 30 lần thử, `scoring='average_precision'` — *xong là khi:* có bảng 5 cấu hình tốt nhất.
+- [x] **T-25** Huấn luyện lại trên toàn tập train, đánh giá trên tập test — *xong là khi:* AC-M1 (PR-AUC ≥ 0,75) và AC-M2 (Recall ≥ 0,75) đạt.
+- [x] **T-26** Bootstrap 1.000 lần cho PR-AUC, Recall, Precision — *xong là khi:* mọi chỉ số chính trong báo cáo đều có khoảng tin cậy (AC-M6).
+- [x] **T-27** Đánh giá theo cách chia thời gian (ngày 1 train, ngày 2 test) — *xong là khi:* có bảng đối chiếu hai cách chia và một đoạn giải thích vì sao cách theo thời gian thấp hơn (AC-M7).
+- [x] **T-28** **Rà soát rò rỉ dữ liệu** theo danh sách kiểm [docs/08 §3.1](docs/08-ke-hoach-kiem-thu.md) — *xong là khi:* cả 7 ô trong danh sách được tick và `pytest tests/test_no_leakage.py` xanh (AC-M4). **Làm ở ngày 12, không để đến ngày 20.**
+
+### Cách chạy
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_search.py --smoke   # thử 12.000 dòng, 4 lần thử, ~1 phút
+.\.venv\Scripts\python.exe scripts\run_search.py           # thật: 30 lần thử × 5 fold, ~20 phút
+.\.venv\Scripts\python.exe scripts\run_search.py --status  # xem kết quả đã lưu
+```
+
+Rồi mở `notebooks/05_advanced_models.ipynb` và Run All (~20 phút: điểm out-of-fold, bootstrap,
+ba cách chia tập). Notebook cần `reports/grid_results.npz` của giai đoạn 3 — tệp này không nằm
+trong git, thiếu thì chạy `scripts/run_grid.py` trước.
+
+Đủ lệnh (PowerShell và Git Bash), hiện vật sinh ra, số đối chiếu và các bẫy đã gặp:
+[docs/lenh-chay-giai-doan-4.md](docs/lenh-chay-giai-doan-4.md).
+
+### Ghi chú khi làm xong giai đoạn 4
+
+**1. T-24 — tinh chỉnh là kết quả âm tính.** 30 lần thử, 19,8 phút. Cấu hình đầu bảng
+(`n_estimators=750, max_depth=6, learning_rate=0,090, scale_pos_weight=10`) đạt PR-AUC CV
+0,8538 ± 0,0328, **thấp hơn** cấu hình mặc định của giai đoạn 3 (0,8549). Năm cấu hình đầu cách
+nhau 0,0008 trong khi độ lệch chuẩn giữa các fold là 0,031. `scale_pos_weight` gần như không ảnh
+hưởng PR-AUC: nó dịch điểm rủi ro chứ không đổi thứ tự.
+
+**2. T-25 — chọn cấu hình MẶC ĐỊNH, và chọn trên tập train.** Quy tắc đặt trước: tinh chỉnh chỉ
+thay mặc định nếu bootstrap hiệu PR-AUC theo cặp trên điểm out-of-fold không chứa 0. Kết quả
+−0,0006 [−0,0087, +0,0072] → giữ mặc định. Trên tập test:
+
+| chỉ số (τ\* = 0,0232, chọn trên OOF) | giá trị [KTC 95%] | tiêu chí |
+|---|---|---|
+| PR-AUC | **0,825** [0,747 – 0,896] | AC-M1 ≥ 0,75 ✅ |
+| Recall@τ\* | **0,811** [0,737 – 0,884] — 77/95 vụ | AC-M2 ≥ 0,75 ✅ |
+| Precision@τ\* | 0,670 [0,600 – 0,752] — 38 cảnh báo giả | |
+| ROC-AUC | 0,977 [0,961 – 0,991] | |
+
+**Cận dưới của PR-AUC và recall đều sát dưới 0,75** — đạt theo ước lượng điểm, không đạt "chắc
+chắn". Không được viết khác đi trong báo cáo.
+
+**3. T-27 — chia theo thời gian thấp hơn, do độ lệch thời gian chứ không do thiếu dữ liệu.**
+
+| cách chia | PR-AUC test | Precision@τ\* | FP |
+|---|---|---|---|
+| ngẫu nhiên 80/20 | 0,825 | 0,670 | 38 |
+| ngẫu nhiên, train thu nhỏ bằng ngày 1 (đối chứng) | 0,825 | 0,826 | 16 |
+| ngày 1 → ngày 2 | **0,782** | **0,332** | 338 |
+
+Dòng đối chứng tách được hai nguyên nhân: bớt dữ liệu chỉ mất −0,0004, còn −0,043 là do thời
+gian. Khoảng tin cậy PR-AUC hai cách chia chồng lấn nhau, nhưng precision tại ngưỡng cố định thì
+tách hẳn: cùng τ\*, ngày 2 sinh báo động giả gấp 3,6 lần. Tỷ lệ gian lận cũng giảm từ 0,189%
+xuống 0,144%. Đây là đầu vào cho T-31 và phần hạn chế ở T-64.
+
+**4. T-28 — 7/7 ô, thành kiểm thử tự động.** Mỗi ô ở [docs/08 §3.1](docs/08-ke-hoach-kiem-thu.md)
+giờ là một kiểm thử trong `tests/test_no_leakage.py`, quét `src/`, `scripts/`, `app.py` và mọi
+notebook. Lần quét tìm ra đúng một vi phạm: `app.py` dùng `random_state=0`, đã sửa.
+
+**5. Phát hiện về tái lập — cần cho T-38.** XGBoost `hist` cho điểm **lệch nhẹ theo số luồng**:
+cùng cấu hình chạy `n_jobs=1` và `n_jobs=-1` khác nhau ở chữ số thứ ba–tư. Cùng máy thì tái lập
+tuyệt đối; khác số lõi thì có thể lệch. Đã ghi vào [docs/10 §6](docs/10-van-hanh-tai-lap.md).
+
+**Phát sinh thêm:** `run_search()`, `search_space()`, `search_table()`, `best_params_from()` trong
+`src/modeling.py`; `bootstrap_diff()` trong `src/evaluate.py` (bootstrap theo cặp, trước đây viết
+lại trong từng notebook); `scripts/run_search.py`; `tests/test_search.py` 12 ca; 9 kiểm thử mới (30 ca sau khi tham số hoá) trong
+`tests/test_no_leakage.py`. Hiện vật: `reports/search_results.csv`, `best_params.json`,
+`final_test_metrics.csv`, `split_comparison.csv`, 4 hình `05_*`.
+
+**Mang sang giai đoạn 5:** mô hình là `build_pipeline("xgboost", "class_weight", y=y_train)` với
+cấu hình mặc định; τ\* chi phí trên out-of-fold = 0,0232.
 
 ---
 

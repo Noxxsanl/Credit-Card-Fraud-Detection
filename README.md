@@ -61,7 +61,7 @@ python scripts/run_grid.py --status   # xem tiến độ
 | `02_statistics.ipynb` | Mann–Whitney U, hiệu chỉnh BH, Cohen's d và Cliff's delta → `reports/feature_ranking.csv` | ✅ |
 | `03_baseline.ipynb` | Mô hình rỗng + Logistic Regression + Decision Tree, bảng mốc cho G-2 → `data/test_set.parquet` | ✅ |
 | `04_imbalance_strategies.ipynb` | Lưới 5 chiến lược × 4 mô hình → `reports/grid_results.csv` | ✅ |
-| `05_advanced_models.ipynb` | Random Forest, XGBoost/LightGBM, tuning → `best_model.pkl` | |
+| `05_advanced_models.ipynb` | Tinh chỉnh XGBoost, đánh giá trên tập test kèm khoảng tin cậy, chia theo thời gian, rà soát rò rỉ → `reports/final_test_metrics.csv` | ✅ |
 | `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ | |
 | `07_explainability.ipynb` | SHAP, feature importance, phân tích lỗi | |
 

@@ -122,12 +122,20 @@ Chạy notebook theo đúng thứ tự, mỗi notebook trong kernel sạch:
 | 2 | `02_statistics.ipynb` | 2–4 phút | Bảng xếp hạng đặc trưng |
 | 3 | `03_baseline.ipynb` | 5–10 phút | `data/test_set.parquet` |
 | 4 | `04_imbalance_strategies.ipynb` | **1–3 giờ** | `reports/grid_results.csv` |
-| 5 | `05_advanced_models.ipynb` | 30–60 phút | Mô hình đã tinh chỉnh |
+| 5 | `05_advanced_models.ipynb` | ~20 phút tìm kiếm (`scripts/run_search.py`) + ~20 phút notebook | `reports/search_results.csv`, `final_test_metrics.csv`, `split_comparison.csv` |
 | 6 | `06_threshold_and_cost.ipynb` | 2–5 phút | Đường cong chi phí |
 | 7 | `07_explainability.ipynb` | 10–20 phút | Biểu đồ SHAP |
 | 8 | `08_export_artifacts.ipynb` | 2–5 phút | Toàn bộ `models/*`, `data/sample_pool.json` |
 
 Tổng khoảng 2–4 giờ, phần lớn nằm ở notebook 04.
+
+Notebook 05 đọc `reports/grid_results.npz` (điểm out-of-fold của notebook 04, không đưa vào git)
+và `reports/search_results.csv`. Chạy trước hai lệnh:
+
+```bash
+python scripts/run_grid.py      # nếu chưa có reports/grid_results.npz
+python scripts/run_search.py    # 30 lần thử × 5 fold, khoảng 20 phút trên 12 lõi
+```
 
 Chạy không cần giao diện:
 
@@ -220,7 +228,7 @@ Chạy `pytest` trước mỗi commit. Chi tiết các ca ở
 | Hạt giống ngẫu nhiên | `random_state=42` ở mọi bước có tham số này (ML-05) |
 | Phiên bản thư viện | `requirements.txt` dùng `>=`; khi nộp bài, xuất bản ghim chính xác bằng `pip freeze > requirements.lock.txt` |
 | Thứ tự dữ liệu | Không `shuffle` ngoài các chỗ đã ghim seed |
-| Song song hóa | `n_jobs=-1` không ảnh hưởng kết quả với các mô hình đang dùng, nhưng có ảnh hưởng tới thời gian chạy báo cáo |
+| Song song hóa | XGBoost `tree_method="hist"` cho điểm **lệch nhẹ theo số luồng** (thứ tự cộng dồn histogram thay đổi): cùng cấu hình chạy `n_jobs=1` và `n_jobs=-1` khác nhau ở chữ số thứ ba–tư của xác suất. Trên cùng một máy thì tái lập tuyệt đối. Khi kiểm tra tái lập (T-38) trên máy khác, ghi lại số lõi; nếu lệch vượt 0,001 thì ghim `n_jobs` cố định. Phát hiện ở giai đoạn 4, xem `tests/test_search.py` |
 | Phiên bản mô hình | `model_version` ghi trong `threshold.json` và gắn vào mọi phản hồi API |
 
 Quy trình kiểm tra tái lập (thực hiện ngày 20):
