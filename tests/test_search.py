@@ -11,7 +11,8 @@ import pytest
 from sklearn.model_selection import ParameterSampler
 
 from src.config import RANDOM_STATE
-from src.evaluate import bootstrap_diff
+from src.evaluate import bootstrap_diff, bootstrap_threshold_diff
+from src.threshold import metrics_at_threshold
 from src.features import V_COLUMNS, build_features
 from src.modeling import (
     SEARCH_PARAMS,
@@ -188,3 +189,36 @@ def test_bootstrap_diff_is_antisymmetric():
 
     assert ab["value"] == pytest.approx(-ba["value"])
     assert ab["ci_low"] == pytest.approx(-ba["ci_high"])
+
+
+# --------------------------------------------------------------------------
+# bootstrap_threshold_diff — hai ngưỡng của cùng một mô hình (T-30)
+# --------------------------------------------------------------------------
+
+def test_threshold_diff_point_values_match_direct_counting():
+    rng = np.random.default_rng(3)
+    y = np.r_[np.ones(30), np.zeros(600)].astype(int)
+    s = np.clip(y * 0.4 + rng.random(y.size) * 0.6, 0, 1)
+
+    out = bootstrap_threshold_diff(y, s, 0.3, 0.7, cost_fn=100.0, cost_fp=5.0, n_boot=100)
+    a, b = metrics_at_threshold(y, s, 0.3), metrics_at_threshold(y, s, 0.7)
+
+    assert out["tp"]["value"] == a.tp - b.tp
+    assert out["fp"]["value"] == a.fp - b.fp
+    assert out["cost"]["value"] == pytest.approx(
+        (a.fn - b.fn) * 100.0 + (a.fp - b.fp) * 5.0
+    )
+    for name in ("tp", "fp", "cost"):
+        assert out[name]["ci_low"] <= out[name]["value"] <= out[name]["ci_high"]
+
+
+def test_threshold_diff_same_threshold_is_exactly_zero():
+    rng = np.random.default_rng(4)
+    y = np.r_[np.ones(20), np.zeros(400)].astype(int)
+    s = rng.random(y.size)
+
+    out = bootstrap_threshold_diff(y, s, 0.5, 0.5, n_boot=50)
+
+    for name in ("tp", "fp", "cost"):
+        assert out[name]["value"] == out[name]["ci_low"] == out[name]["ci_high"] == 0.0
+    assert out["cost"]["a_cheaper"] == 0.0

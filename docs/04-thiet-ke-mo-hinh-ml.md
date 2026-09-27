@@ -327,6 +327,44 @@ tối ưu dịch chuyển thế nào khi tỷ lệ chi phí thay đổi từ 5:1
 tối ưu ổn định trong dải rộng thì kết luận vững; nếu nó nhảy mạnh thì phải nói rõ
 rằng khuyến nghị phụ thuộc nhiều vào ước lượng chi phí.
 
+### 6.6 Kết quả thực đo (giai đoạn 5, notebook 06)
+
+**Lệch khỏi đặc tả: ngưỡng ứng viên là mọi điểm out-of-fold khác nhau, không phải lưới 200
+điểm.** Với τ\* thì hai cách gần như trùng nhau (0,02317 so với 0,02321). Nhưng lưới 200 lượng tử
+quá thô ở phần đuôi: tiêu chí ngân sách 200 cảnh báo/ngày chỉ tìm được 172,5 cảnh báo/ngày (recall
+OOF 0,717 thay vì 0,799), còn `max_f1` nhảy từ 0,72 lên 0,94. `pick_threshold`,
+`threshold_alternatives` và `sensitivity_analysis` vì thế nhận thêm tham số `thresholds`. Báo cáo
+truyền `np.unique(oof)`, còn API giữ lưới mặc định cho thanh trượt.
+
+Bảng §6.4 trên tập kiểm thử (56.746 giao dịch, 95 gian lận), mọi ngưỡng chọn trên out-of-fold:
+
+| Ngưỡng | Cảnh báo/ngày | TP | FP | FN | Precision | Recall | Chi phí kỳ vọng |
+|---|---|---|---|---|---|---|---|
+| 0,5 (mặc định) | 195 | 74 | 4 | 21 | 0,949 | 0,779 | 2.586 USD |
+| **τ\* = 0,0232** | **287** | **77** | **38** | **18** | **0,670** | **0,811** | **2.390 USD** |
+| τ = 0,00054 cho recall ≥ 90% | 2.007 | 83 | 720 | 12 | 0,103 | 0,874 | 5.067 USD |
+| τ = 0,9625 cho 200 cảnh báo/ngày | 175 | 69 | 1 | 26 | 0,986 | 0,726 | 3.182 USD |
+
+"Hạ ngưỡng từ 0,5 xuống 0,0232 bắt thêm **3** vụ gian lận, đổi lại **34** cảnh báo giả, tiết
+kiệm ròng **197 USD** trên tập kiểm thử (khoảng 490 USD/ngày trên toàn luồng)." Bootstrap theo
+cặp cho hiệu chi phí trên tập test là −197 [−676, +160], **chứa 0**. Trên out-of-fold (378 gian
+lận) thì −707 [−1.513, −24], không chứa 0. Kết luận "τ\* rẻ hơn 0,5" dựa trên out-of-fold.
+
+**§6.1 dự báo sai về độ lớn.** Ngưỡng 0,5 không cho recall "thấp bất thường" (0,779 so với 0,811
+ở τ\*), vì `scale_pos_weight = 599,5` đã đẩy điểm lớp dương lên sát 1. Dự báo ở §6.1 đúng với mô
+hình không có trọng số lớp. Với mô hình có trọng số, chọn ngưỡng tiết kiệm được khoảng 9% chi
+phí chứ không phải hàng chục phần trăm.
+
+**Độ nhạy (§6.5, AC-M8).** τ\* đổi theo bậc, không liên tục: 0,72 (5:1), 0,099 (7,5–15:1),
+**0,0232 (20–50:1)**, 0,0023 (75–100:1). Nếu vẫn dùng τ\* mặc định khi tỷ lệ thật khác đi, mức hối
+tiếc chỉ ≤ 5% trong dải 10:1 → 75:1, và tối đa 16,7% ở 5:1. Recall trên test luôn nằm trong
+0,77–0,85. Thứ tỷ lệ chi phí thật sự quyết định là **khối lượng thẩm định** (khoảng 190 → 770 cảnh
+báo/ngày). Kết quả nằm ở `reports/threshold_comparison.csv`, `reports/cost_sensitivity.csv`.
+
+**Hai hệ quả vận hành.** (1) τ\* sinh 287 cảnh báo/ngày, vượt ngân sách 200 thêm 44%. (2) Ràng buộc
+recall chọn vừa khít trên out-of-fold thì hụt trên dữ liệu mới (0,902 → 0,874). Ràng buộc tuân
+thủ thật cần biên an toàn.
+
 ## 7. Giải thích mô hình
 
 | Mức | Công cụ | Đưa vào đâu |
@@ -342,6 +380,24 @@ nguyên nhân nghiệp vụ. Nói rõ điều này thể hiện hiểu vấn đ�
 
 Phần phân tích lỗi (notebook 07): lấy các FN có điểm rủi ro cao nhất và các FP có
 điểm cao nhất, giải thích SHAP cho từng trường hợp, tìm mẫu hình chung.
+
+### 7.1 Kết quả thực đo (giai đoạn 5, notebook 07)
+
+**Lệch khỏi đặc tả:** SHAP được tính trên **toàn bộ** 56.746 giao dịch test (35 giây) để bảng
+`mean|SHAP|` đại diện cho cả luồng. `summary_plot` dùng 2.000 mẫu như đặc tả, nhưng gồm cả 95 gian
+lận cộng 1.905 giao dịch hợp lệ ngẫu nhiên, vì mẫu ngẫu nhiên thuần chỉ có khoảng 3 vụ gian lận.
+
+- Kiểm tra tính cộng: `base + ΣSHAP` khớp logit của booster tới 2·10⁻⁵.
+- Top 5 theo `mean|SHAP|`: V14 (15,8%), V4, V12, V11, V10, cộng lại 46%. `Amount` hạng 19 (2,0%),
+  giờ trong ngày chiếm 2,7%.
+- So với T-15, Spearman bằng 0,42 với \|Cohen's d\|, 0,43 với \|Cliff's delta\| và 0,30 với hệ số
+  chuẩn hoá của hồi quy logistic. V17 hạng 1 theo Cohen's d nhưng hạng 24/31 theo SHAP, vì nó
+  thừa thông tin khi đã có V14, V12, V10 (autoencoder ở §8.1 lại thấy V17 bất thường nhất).
+- Phân tích lỗi tại τ\*: 12/18 FN có điểm dưới 0,001, và 67% FN có cả 5 đặc trưng chính nằm
+  trong khoảng P1–P99 của lớp hợp lệ. FP điểm cao thì mang đủ "chữ ký" V14 / V10 / V12 của gian
+  lận. Cả hai loại lỗi là giới hạn của đặc trưng, không phải của mô hình.
+
+Chi tiết ở `reports/shap_ranking.csv` và `reports/error_analysis.csv`.
 
 ## 8. Autoencoder — tùy chọn (FR-11)
 
@@ -359,6 +415,17 @@ Chỉ làm nếu còn thời gian sau khi hoàn thành mọi hạng mục bắt 
 năng thua rõ rệt so với XGBoost), mà là **vì sao**: phương pháp không giám sát
 không dùng tới 492 nhãn có sẵn. Nó chỉ đáng giá khi không có nhãn hoặc khi cần
 bắt kiểu gian lận mới chưa từng xuất hiện.
+
+### 8.1 Kết quả thực đo (notebook 06b)
+
+**Lệch khỏi đặc tả:** môi trường không có PyTorch, nên mạng dựng bằng `MLPRegressor` của
+scikit-learn (`src/anomaly.py`), có 31 đầu vào vì `Time` đã được thay bằng `hour_sin`, `hour_cos`.
+`Amount` lấy `log1p`, rồi mọi cột chuẩn hoá theo thống kê của lớp hợp lệ trong tập train.
+
+PR-AUC **0,329** [0,246 – 0,438] so với 0,825 của XGBoost, hiệu +0,496 [+0,394, +0,583]. ROC-AUC
+0,949 so với 0,977 trông như ngang nhau. Autoencoder xếp 93/95 vụ gian lận trên trung vị, nên nó
+không bỏ sót gian lận. Nó thua vì không phân biệt được giao dịch hợp lệ hiếm gặp với giao dịch
+gian lận: trong 1% giao dịch bất thường nhất có 74 vụ gian lận và 494 giao dịch hợp lệ.
 
 ## 9. Hiện vật đầu ra
 

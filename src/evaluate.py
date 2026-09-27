@@ -216,6 +216,70 @@ def bootstrap_diff(
     }
 
 
+def bootstrap_threshold_diff(
+    y_true,
+    y_scores,
+    threshold_a: float,
+    threshold_b: float,
+    *,
+    cost_fn: float = DEFAULT_COST_FN,
+    cost_fp: float = DEFAULT_COST_FP,
+    n_boot: int = 1000,
+    alpha: float = 0.05,
+    random_state: int = RANDOM_STATE,
+) -> dict[str, dict]:
+    """Bootstrap theo cặp cho chênh lệch giữa HAI NGƯỠNG của cùng một mô hình.
+
+    Trả lời câu hỏi của T-30: đổi ngưỡng từ ``b`` sang ``a`` thì bắt thêm bao
+    nhiêu vụ, thêm bao nhiêu cảnh báo giả, và chi phí đổi bao nhiêu — mỗi con số
+    kèm khoảng tin cậy. Hiệu nào cũng là ``a − b``, nên ``cost`` âm nghĩa là
+    ngưỡng ``a`` rẻ hơn.
+
+    Cùng một mẫu bootstrap (phân tầng như ``bootstrap_ci``) được dùng cho cả hai
+    ngưỡng. Chỉ những giao dịch nằm GIỮA hai ngưỡng mới đóng góp vào hiệu, nên
+    so hai khoảng tin cậy riêng lẻ sẽ rộng hơn thực tế rất nhiều.
+    """
+    y_true = np.asarray(y_true).ravel()
+    y_scores = np.asarray(y_scores, dtype="float64").ravel()
+
+    actual = y_true == 1
+    flag_a = y_scores >= threshold_a
+    flag_b = y_scores >= threshold_b
+    # Đóng góp của từng giao dịch vào hiệu (a − b): +1 TP thêm, +1 FP thêm
+    d_tp = (flag_a & actual).astype("int64") - (flag_b & actual).astype("int64")
+    d_fp = (flag_a & ~actual).astype("int64") - (flag_b & ~actual).astype("int64")
+    # FN(a) − FN(b) = −(TP(a) − TP(b)) vì tổng số dương cố định
+    d_cost = -d_tp * cost_fn + d_fp * cost_fp
+
+    pos_idx = np.flatnonzero(actual)
+    neg_idx = np.flatnonzero(~actual)
+    rng = np.random.default_rng(random_state)
+
+    samples = np.empty((n_boot, 3), dtype="float64")
+    for i in range(n_boot):
+        idx = np.concatenate(
+            [
+                rng.choice(pos_idx, size=pos_idx.size, replace=True),
+                rng.choice(neg_idx, size=neg_idx.size, replace=True),
+            ]
+        )
+        samples[i] = d_tp[idx].sum(), d_fp[idx].sum(), d_cost[idx].sum()
+
+    lo, hi = np.quantile(samples, [alpha / 2, 1 - alpha / 2], axis=0)
+    values = (d_tp.sum(), d_fp.sum(), d_cost.sum())
+    out: dict[str, dict] = {}
+    for j, name in enumerate(("tp", "fp", "cost")):
+        out[name] = {
+            "value": float(values[j]),
+            "ci_low": float(lo[j]),
+            "ci_high": float(hi[j]),
+            "contains_zero": bool(lo[j] <= 0 <= hi[j]),
+        }
+    out["cost"]["a_cheaper"] = float(np.mean(samples[:, 2] < 0))
+    out["n_boot"] = n_boot
+    return out
+
+
 def headline_metrics(
     y_true,
     y_scores,

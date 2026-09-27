@@ -202,7 +202,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 #: Notebook huấn luyện mô hình — nơi thứ tự nạp → loại trùng → chia → huấn luyện
 #: phải được tôn trọng. 01 và 02 chỉ làm EDA và kiểm định thống kê.
-TRAINING_NOTEBOOKS = ("03_baseline", "04_imbalance_strategies", "05_advanced_models")
+TRAINING_NOTEBOOKS = (
+    "03_baseline",
+    "04_imbalance_strategies",
+    "05_advanced_models",
+    "06_threshold_and_cost",
+    "06b_autoencoder",
+    "07_explainability",
+)
 
 
 def _notebook_code(path: Path) -> str:

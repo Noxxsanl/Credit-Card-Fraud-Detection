@@ -251,10 +251,16 @@ def pick_threshold(
     cost_fn: float = DEFAULT_COST_FN,
     cost_fp: float = DEFAULT_COST_FP,
     n_steps: int = 200,
+    thresholds=None,
     sample_fraction: float = TEST_SIZE,
     days: float = DATASET_DAYS,
 ) -> float:
     """Chọn ngưỡng theo một tiêu chí.
+
+    Ngưỡng ứng viên mặc định là ``threshold_grid`` 200 điểm — đủ nhanh cho API.
+    Khi cần nghiệm chính xác (báo cáo), truyền ``thresholds=np.unique(y_scores)``:
+    lưới thô trượt qua vùng đuôi và làm ràng buộc ngân sách cảnh báo dùng thiếu
+    năng lực thẩm định (notebook 06 §2).
 
     Tiêu chí
     --------
@@ -287,6 +293,7 @@ def pick_threshold(
         cost_fn=cost_fn,
         cost_fp=cost_fp,
         n_steps=n_steps,
+        thresholds=thresholds,
         sample_fraction=sample_fraction,
         days=days,
     )
@@ -323,6 +330,7 @@ def threshold_alternatives(
     min_recall: float = 0.90,
     alert_budget: float = 200.0,
     n_steps: int = 200,
+    thresholds=None,
     sample_fraction: float = TEST_SIZE,
     days: float = DATASET_DAYS,
 ) -> dict[str, float]:
@@ -331,6 +339,7 @@ def threshold_alternatives(
         cost_fn=cost_fn,
         cost_fp=cost_fp,
         n_steps=n_steps,
+        thresholds=thresholds,
         sample_fraction=sample_fraction,
         days=days,
     )
@@ -380,12 +389,21 @@ def sensitivity_analysis(
     *,
     cost_fp: float = DEFAULT_COST_FP,
     n_steps: int = 200,
+    thresholds=None,
+    sample_fraction: float = TEST_SIZE,
+    days: float = DATASET_DAYS,
 ) -> pd.DataFrame:
     """Ngưỡng tối ưu dịch chuyển thế nào khi tỷ lệ chi phí thay đổi (AC-M8).
 
     Vì ``cost_fn`` và ``cost_fp`` đều là giả định, kết luận chỉ vững nếu ngưỡng
     tối ưu ổn định trong một dải tỷ lệ rộng.
+
+    ``sample_fraction`` phải khớp với tập đang dùng — 0,8 cho điểm out-of-fold
+    của tập huấn luyện — nếu không cột ``alerts_per_day`` bị quy đổi sai.
     """
+    kwargs = dict(
+        n_steps=n_steps, thresholds=thresholds, sample_fraction=sample_fraction, days=days
+    )
     rows = []
     for ratio in ratios:
         cost_fn = cost_fp * ratio
@@ -395,10 +413,16 @@ def sensitivity_analysis(
             "min_expected_cost",
             cost_fn=cost_fn,
             cost_fp=cost_fp,
-            n_steps=n_steps,
+            **kwargs,
         )
         metrics = metrics_at_threshold(
-            y_true, y_scores, threshold, cost_fn=cost_fn, cost_fp=cost_fp
+            y_true,
+            y_scores,
+            threshold,
+            cost_fn=cost_fn,
+            cost_fp=cost_fp,
+            sample_fraction=sample_fraction,
+            days=days,
         )
         rows.append(
             {

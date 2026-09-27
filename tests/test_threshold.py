@@ -16,6 +16,7 @@ from src.threshold import (
     cost_curve,
     metrics_at_threshold,
     pick_threshold,
+    sensitivity_analysis,
     sweep,
     threshold_alternatives,
     threshold_grid,
@@ -274,6 +275,51 @@ def test_compare_thresholds_returns_one_row_per_option(scores):
     assert isinstance(table, pd.DataFrame)
     assert len(table) == len(alternatives)
     assert {"precision", "recall", "expected_cost", "alerts_per_day"} <= set(table.columns)
+
+
+def test_exact_candidates_never_do_worse_than_the_grid(scores):
+    """Dò trên mọi điểm khác nhau là tập ứng viên lớn nhất: chi phí không thể cao hơn
+    lưới, và ngân sách cảnh báo được dùng sát hơn mà vẫn không vượt."""
+    y_true, y_scores = scores
+    exact = np.unique(y_scores)
+
+    def cost(tau):
+        return metrics_at_threshold(y_true, y_scores, tau).expected_cost
+
+    assert cost(pick_threshold(y_true, y_scores, thresholds=exact)) <= cost(
+        pick_threshold(y_true, y_scores)
+    )
+
+    budget = 300.0
+    grid_tau = pick_threshold(y_true, y_scores, "max_alerts_per_day", value=budget)
+    exact_tau = pick_threshold(
+        y_true, y_scores, "max_alerts_per_day", value=budget, thresholds=exact
+    )
+    grid_alerts = metrics_at_threshold(y_true, y_scores, grid_tau).alerts_per_day
+    exact_alerts = metrics_at_threshold(y_true, y_scores, exact_tau).alerts_per_day
+    assert grid_alerts <= exact_alerts <= budget
+
+
+def test_sensitivity_threshold_never_falls_as_misses_get_dearer(scores):
+    """AC-M8 — FN càng đắt thì càng đáng chặn rộng tay: τ* không được tăng."""
+    y_true, y_scores = scores
+
+    table = sensitivity_analysis(y_true, y_scores, ratios=(5, 10, 25, 50, 100))
+
+    assert list(table["cost_ratio"]) == [5, 10, 25, 50, 100]
+    assert table["threshold"].is_monotonic_decreasing
+    assert table["recall"].is_monotonic_increasing
+
+
+def test_sensitivity_alerts_per_day_follow_sample_fraction(scores):
+    """Trên điểm out-of-fold (80% dữ liệu) số cảnh báo/ngày phải quy đổi theo 0,8."""
+    y_true, y_scores = scores
+
+    on_test = sensitivity_analysis(y_true, y_scores, ratios=(24,))
+    on_oof = sensitivity_analysis(y_true, y_scores, ratios=(24,), sample_fraction=0.8)
+
+    assert on_oof.loc[0, "alerts"] == on_test.loc[0, "alerts"]
+    assert on_oof.loc[0, "alerts_per_day"] == pytest.approx(on_test.loc[0, "alerts_per_day"] / 4)
 
 
 def test_invalid_criterion_is_rejected(scores):

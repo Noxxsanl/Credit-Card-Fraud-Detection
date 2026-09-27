@@ -16,14 +16,14 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 2. Mô hình cơ sở | 4 | 4 | ✅ |
 | 3. Chiến lược mất cân bằng | 4 | 4 | ✅ |
 | 4. Tinh chỉnh và kiểm chứng | 5 | 5 | ✅ |
-| 5. Ngưỡng, chi phí, SHAP | 6 | 0 | |
+| 5. Ngưỡng, chi phí, SHAP | 6 | 6 | ✅ |
 | 6. Xuất hiện vật | 4 | 0 | |
 | 🚩 Mốc quyết định A/B | 1 | 0 | |
 | 7. API | 11 | 0 | |
 | 8. Giao diện | 7 | 0 | |
 | 9. Đóng gói | 5 | 0 | |
 | 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **28** | **42%** |
+| **Tổng** | **67** | **34** | **51%** |
 
 ---
 
@@ -276,14 +276,75 @@ cấu hình mặc định; τ\* chi phí trên out-of-fold = 0,0232.
 
 ---
 
-## Giai đoạn 5 — Ngưỡng, chi phí, SHAP (ngày 13–14)
+## Giai đoạn 5 — Ngưỡng, chi phí, SHAP (ngày 13–14) ✅
 
-- [ ] **T-29** `notebooks/06_threshold_and_cost.ipynb`: đường cong chi phí + 4 phương án ngưỡng, chọn ngưỡng trên dữ liệu **out-of-fold** (`oof_scores`), không trên tập test — *xong là khi:* ML-08 được tôn trọng.
-- [ ] **T-30** Bảng bắt buộc trong báo cáo: 4 ngưỡng × (cảnh báo/ngày, TP, FP, FN, Precision, Recall, chi phí) — *xong là khi:* có thêm một đoạn diễn giải bằng lời dạng "hạ ngưỡng từ 0,5 xuống τ\* bắt thêm N vụ, đổi lại M cảnh báo giả, tiết kiệm ròng X".
-- [ ] **T-31** Phân tích độ nhạy theo tỷ lệ chi phí 5:1 → 100:1 bằng `sensitivity_analysis()` — *xong là khi:* có hình cho thấy ngưỡng tối ưu dịch chuyển thế nào (AC-M8).
-- [ ] **T-32** `notebooks/07_explainability.ipynb`: SHAP toàn cục (`summary_plot` trên 2.000 mẫu) + xếp hạng `mean|SHAP|` — *xong là khi:* có bảng so SHAP với xếp hạng thống kê ở T-15.
-- [ ] **T-33** Phân tích lỗi: giải thích SHAP cho các FN điểm cao nhất và FP điểm cao nhất — *xong là khi:* nêu được mẫu hình chung, kèm câu chốt rằng V1–V28 là PCA nên không diễn giải thành nguyên nhân nghiệp vụ.
-- [ ] **T-34** *(Tùy chọn)* Autoencoder huấn luyện chỉ trên lớp bình thường — *xong là khi:* so được PR-AUC với mô hình có giám sát và giải thích **vì sao** nó thua (không dùng tới 492 nhãn có sẵn).
+- [x] **T-29** `notebooks/06_threshold_and_cost.ipynb`: đường cong chi phí + 4 phương án ngưỡng, chọn ngưỡng trên dữ liệu **out-of-fold** (`oof_scores`), không trên tập test — *xong là khi:* ML-08 được tôn trọng.
+- [x] **T-30** Bảng bắt buộc trong báo cáo: 4 ngưỡng × (cảnh báo/ngày, TP, FP, FN, Precision, Recall, chi phí) — *xong là khi:* có thêm một đoạn diễn giải bằng lời dạng "hạ ngưỡng từ 0,5 xuống τ\* bắt thêm N vụ, đổi lại M cảnh báo giả, tiết kiệm ròng X".
+- [x] **T-31** Phân tích độ nhạy theo tỷ lệ chi phí 5:1 → 100:1 bằng `sensitivity_analysis()` — *xong là khi:* có hình cho thấy ngưỡng tối ưu dịch chuyển thế nào (AC-M8).
+- [x] **T-32** `notebooks/07_explainability.ipynb`: SHAP toàn cục (`summary_plot` trên 2.000 mẫu) + xếp hạng `mean|SHAP|` — *xong là khi:* có bảng so SHAP với xếp hạng thống kê ở T-15.
+- [x] **T-33** Phân tích lỗi: giải thích SHAP cho các FN điểm cao nhất và FP điểm cao nhất — *xong là khi:* nêu được mẫu hình chung, kèm câu chốt rằng V1–V28 là PCA nên không diễn giải thành nguyên nhân nghiệp vụ.
+- [x] **T-34** *(Tùy chọn)* Autoencoder huấn luyện chỉ trên lớp bình thường — *xong là khi:* so được PR-AUC với mô hình có giám sát và giải thích **vì sao** nó thua (không dùng tới 492 nhãn có sẵn).
+
+### Cách chạy
+
+```powershell
+foreach ($nb in "06_threshold_and_cost", "07_explainability", "06b_autoencoder") {
+    .\.venv\Scripts\python.exe -m jupyter nbconvert --to notebook --execute --inplace `
+        --ExecutePreprocessor.timeout=3600 "notebooks\$nb.ipynb"
+}
+```
+
+Tổng khoảng 10 phút. Cần `reports/grid_results.npz` (điểm out-of-fold của giai đoạn 3); thiếu thì
+notebook tự tính lại. Đủ lệnh, hiện vật và số đối chiếu:
+[docs/lenh-chay-giai-doan-5.md](docs/lenh-chay-giai-doan-5.md).
+
+### Ghi chú khi làm xong giai đoạn 5
+
+**1. T-29 — τ\* = 0,02317, dò trên mọi điểm out-of-fold chứ không trên lưới 200 điểm.** Với riêng
+τ\* thì hai cách gần như trùng nhau (lưới cho 0,02321). Nhưng lưới 200 lượng tử làm hỏng tiêu chí
+ngân sách: nó chỉ dùng 172,5 trong 200 cảnh báo/ngày và mất 8 điểm recall OOF. `pick_threshold`,
+`threshold_alternatives` và `sensitivity_analysis` vì thế nhận thêm `thresholds=`. Đáy chi phí
+phẳng: mọi τ ∈ [0,013; 0,140] đều nằm trong 5% cực tiểu.
+
+**2. T-30 — bảng bắt buộc (tập test, ngưỡng chọn trên OOF):**
+
+| Ngưỡng | Cảnh báo/ngày | TP | FP | FN | Precision | Recall | Chi phí |
+|---|---|---|---|---|---|---|---|
+| 0,5 (mặc định) | 195 | 74 | 4 | 21 | 0,949 | 0,779 | 2.586 USD |
+| **τ\* = 0,0232** | **287** | **77** | **38** | **18** | **0,670** | **0,811** | **2.390 USD** |
+| τ cho recall ≥ 90% | 2.007 | 83 | 720 | 12 | 0,103 | 0,874 | 5.067 USD |
+| τ cho 200 cảnh báo/ngày | 175 | 69 | 1 | 26 | 0,986 | 0,726 | 3.182 USD |
+
+*"Hạ ngưỡng từ 0,5 xuống τ\* bắt thêm 3 vụ, đổi lại 34 cảnh báo giả, tiết kiệm ròng 197 USD"*
+(khoảng 490 USD/ngày trên toàn luồng). **Trên tập test, khoảng tin cậy của khoản tiết kiệm chứa 0**
+(−197 [−676, +160]). Trên OOF với 378 gian lận thì không chứa 0 (−707 [−1.513, −24]). Báo cáo phải
+viết đúng như vậy. Ngưỡng 0,5 không tệ như 04 §6.1 dự báo, vì `scale_pos_weight` đã đẩy điểm lên.
+Có thêm `bootstrap_threshold_diff()` trong `src/evaluate.py` để có khoảng tin cậy cho câu diễn giải.
+
+**3. T-31 — khuyến nghị vững.** τ\* không đổi trên dải 20:1 → 50:1. Nếu dùng τ\* mặc định khi tỷ lệ
+thật khác, mức hối tiếc ≤ 5% trong dải 10:1 → 75:1. Recall test luôn nằm trong 0,77–0,85. Tỷ lệ
+chi phí thật sự quyết định **khối lượng thẩm định** (190 → 770 cảnh báo/ngày), không quyết định recall.
+
+**4. T-32 — V14, V4, V12, V11, V10 chiếm 46% mean|SHAP|.** Spearman với xếp hạng T-15 chỉ 0,42.
+V17 hạng 1 theo Cohen's d nhưng hạng 24/31 theo SHAP, vì nó thừa thông tin khi mô hình đã có
+V14/V12/V10. Đây chính là câu hỏi mà ghi chú giai đoạn 1 để lại cho T-32.
+
+**5. T-33 — lỗi là giới hạn của đặc trưng.** 12/18 FN có điểm dưới 0,001, và 67% FN có cả 5 đặc
+trưng chính nằm trong vùng của lớp hợp lệ. FP điểm cao thì mang đủ chữ ký V14/V10/V12. Đã có câu
+chốt về PCA.
+
+**6. T-34 — autoencoder PR-AUC 0,329 so với 0,825.** Nó thấy 93/95 vụ gian lận là bất thường,
+nhưng không phân biệt được giao dịch hợp lệ hiếm gặp với gian lận. Môi trường không có PyTorch nên
+dùng `MLPRegressor` (`src/anomaly.py`), notebook riêng `06b_autoencoder.ipynb`.
+
+**Phát sinh thêm:** `src/anomaly.py`; `bootstrap_threshold_diff()`; tham số `thresholds=` và sửa
+lỗi `sample_fraction` bị bỏ qua trong `sensitivity_analysis()` (phóng đại cảnh báo/ngày 4 lần khi
+chạy trên OOF); `tests/test_anomaly.py`; 5 ca mới trong `test_threshold.py` và `test_search.py`;
+notebook 06, 06b, 07 được thêm vào danh sách quét thứ tự của `test_no_leakage.py`.
+
+**Mang sang giai đoạn 6:** `threshold.json` lấy τ mặc định = **0,02317** cùng 4 phương án ở bảng
+trên. `explainer.joblib` bọc bước `clf` và nhận đầu vào sau `pipeline[:-1].transform`. Xếp hạng
+mean|SHAP| lấy từ `reports/shap_ranking.csv`.
 
 ---
 
