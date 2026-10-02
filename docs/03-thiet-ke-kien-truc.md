@@ -89,12 +89,17 @@ Ba tầng, phụ thuộc một chiều: route → dịch vụ → truy cập d�
 
 | Tệp | Trách nhiệm |
 |---|---|
-| `api/main.py` | Khởi tạo FastAPI, nạp hiện vật vào bộ nhớ lúc startup, cấu hình CORS |
+| `api/main.py` | Khởi tạo FastAPI, nạp hiện vật vào bộ nhớ lúc startup, cấu hình CORS, `/health` |
+| `api/config.py` | Cấu hình đọc từ biến môi trường và `.env`; các giới hạn (50.000 dòng, 100 MB…) |
+| `api/loader.py` | Nạp và kiểm tra hiện vật bằng các hàm `validate_*` của `src/artifacts.py` |
+| `api/errors.py` | Mô hình lỗi chung (05 §4), đổi lỗi Pydantic sang mã lỗi của hợp đồng |
 | `api/schemas.py` | Toàn bộ mô hình Pydantic vào/ra — nguồn chân lý cho hợp đồng API |
-| `api/deps.py` | Cung cấp mô hình, explainer, phiên cơ sở dữ liệu dạng dependency |
-| `api/services/scoring.py` | Chấm điểm một mẫu và theo lô, gắn `model_version` |
+| `api/deps.py` | Cung cấp hiện vật và phiên cơ sở dữ liệu dạng dependency |
+| `api/services/scoring.py` | Chấm điểm một mẫu, theo lô và từ CSV; ghi bằng `COPY`; gắn `model_version` |
 | `api/services/explaining.py` | Gọi SHAP, sắp xếp và cắt lấy top yếu tố |
-| `api/services/thresholding.py` | Tính lại chỉ số theo ngưỡng, tối ưu theo chi phí |
+| `api/services/thresholding.py` | Tính lại chỉ số theo ngưỡng, tối ưu theo chi phí trên điểm out-of-fold |
+| `api/services/transactions.py` | Hàng đợi, chi tiết giao dịch, ghi kết luận thẩm định |
+| `api/services/runtime_settings.py` | Đọc và ghi bảng `settings`: ngưỡng hiện hành, tham số chi phí |
 | `api/services/replay.py` | Sinh dòng sự kiện cho chế độ phát lại |
 | `api/routes/*.py` | Chuyển đổi HTTP sang lời gọi dịch vụ, không chứa logic nghiệp vụ |
 | `api/db.py` | Engine SQLAlchemy + pool kết nối PostgreSQL, định nghĩa bảng, quản lý phiên |
@@ -234,6 +239,10 @@ không cần công cụ đóng gói, không có `node_modules`. Với bốn màn
 thái đơn giản, nó cho kết quả tương đương Next.js mà tiết kiệm khoảng hai ngày
 công. Chọn Next.js + React + Tailwind + Recharts chỉ khi đã thạo sẵn.
 
+Thực tế đã làm cả hai: bản HTML + Alpine.js + Chart.js ở `web/`, rồi bản Next.js + TypeScript +
+Tailwind + Recharts ở `frontend/` (xuất tĩnh, nên vẫn là "giao diện tĩnh" của §6.3). Hai bản gọi cùng
+API và cùng được TC-12 đối chiếu; so sánh ở [07 §13](07-thiet-ke-giao-dien.md).
+
 **Điểm quyết định:** chốt phương án chậm nhất vào cuối ngày 14. Nếu đến ngày 14
 mô hình chưa xong, chuyển sang phương án A và giữ nguyên bốn màn hình.
 
@@ -285,11 +294,13 @@ fraud-detection/
 │
 ├── api/
 │   ├── main.py
+│   ├── config.py
+│   ├── loader.py             # nạp và kiểm tra hiện vật lúc khởi động
+│   ├── errors.py
 │   ├── schemas.py
 │   ├── deps.py
 │   ├── db.py                 # engine + pool PostgreSQL
 │   ├── models_orm.py         # bảng SQLAlchemy
-│   ├── alembic.ini
 │   ├── migrations/           # lược đồ dưới dạng mã — commit vào git
 │   │   ├── env.py
 │   │   └── versions/
@@ -297,6 +308,8 @@ fraud-detection/
 │   │   ├── scoring.py
 │   │   ├── explaining.py
 │   │   ├── thresholding.py
+│   │   ├── transactions.py
+│   │   ├── runtime_settings.py
 │   │   └── replay.py
 │   ├── routes/
 │   │   ├── scoring.py
@@ -325,6 +338,7 @@ fraud-detection/
 │   ├── bao-cao.md
 │   └── figures/
 ├── app.py                    # lưới an toàn: demo Streamlit (phương án A)
+├── alembic.ini               # ở gốc để `alembic upgrade head` chạy từ gốc repo
 ├── docker-compose.yml        # db + api + web
 ├── .env.example              # DATABASE_URL mẫu, commit được
 ├── requirements.txt

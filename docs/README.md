@@ -21,6 +21,10 @@ sở hữu quyết định đó — các tệp khác chỉ tham chiếu tới.
 | 10 | [Vận hành và tái lập](10-van-hanh-tai-lap.md) | Chạy lại toàn bộ từ đầu bằng lệnh gì | Người chấm, người mới |
 | — | [Lệnh chạy giai đoạn 3](lenh-chay-giai-doan-3.md) | Chạy lại lưới 20 tổ hợp bằng lệnh gì | Người làm mô hình |
 | — | [Lệnh chạy giai đoạn 4](lenh-chay-giai-doan-4.md) | Chạy lại tìm kiếm siêu tham số và notebook 05 bằng lệnh gì | Người làm mô hình |
+| — | [Lệnh chạy giai đoạn 5](lenh-chay-giai-doan-5.md) | Chạy lại notebook ngưỡng, SHAP và autoencoder bằng lệnh gì | Người làm mô hình |
+| — | [Lệnh chạy giai đoạn 6](lenh-chay-giai-doan-6.md) | Xuất hiện vật và kiểm tra tái lập bằng lệnh gì | Người làm mô hình |
+| — | [Lệnh chạy giai đoạn 7](lenh-chay-giai-doan-7.md) | Dựng PostgreSQL, lược đồ và chạy API bằng lệnh gì | Người lập trình |
+| — | [Lệnh chạy giai đoạn 8](lenh-chay-giai-doan-8.md) | Chạy giao diện web, nạp dữ liệu demo, kiểm các tiêu chí giao diện bằng lệnh gì | Người lập trình |
 | — | [Danh sách công việc](../TASKS.md) | Còn phải làm những gì, xong là thế nào | Người thực hiện |
 
 ## Quy ước mã định danh

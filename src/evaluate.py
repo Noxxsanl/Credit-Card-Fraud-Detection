@@ -304,24 +304,42 @@ def headline_metrics(
     return out
 
 
+def thin_curve(x, y, max_points: int = 500) -> np.ndarray:
+    """Chỉ số của tối đa ``max_points`` điểm, rải đều theo **chiều dài** đường cong (x, y).
+
+    Không lấy đều theo chỉ số: ``precision_recall_curve`` trả một điểm cho mỗi ngưỡng khác
+    nhau, mà với 0,17% lớp dương gần như mọi ngưỡng nằm ở vùng điểm thấp, precision ≈ 0.
+    Lấy đều theo chỉ số thì cả vùng precision cao — phần duy nhất đáng xem — chỉ còn hai
+    điểm, và đường PR vẽ ra thành một đoạn thẳng (lỗi phát hiện khi làm UI-04). Rải theo
+    chiều dài thì chỗ nào đường cong đổi hướng nhiều, chỗ đó nhiều điểm. Luôn giữ hai đầu.
+    """
+    x = np.asarray(x, dtype="float64")
+    y = np.asarray(y, dtype="float64")
+    n = x.size
+    if n <= max_points:
+        return np.arange(n)
+    length = np.concatenate([[0.0], np.cumsum(np.hypot(np.diff(x), np.diff(y)))])
+    idx = np.searchsorted(length, np.linspace(0.0, length[-1], max_points), side="left")
+    return np.unique(np.concatenate([[0], np.clip(idx, 0, n - 1), [n - 1]]))
+
+
 def curve_points(y_true, y_scores, *, max_points: int = 500) -> dict[str, dict]:
     """Điểm trên đường PR và ROC, đã lấy mẫu thưa để nhét vừa ``metrics.json``."""
     precision, recall, pr_thresholds = precision_recall_curve(y_true, y_scores)
     fpr, tpr, _ = roc_curve(y_true, y_scores)
 
-    def thin(array: np.ndarray) -> list[float]:
-        if array.size <= max_points:
-            return [float(v) for v in array]
-        idx = np.linspace(0, array.size - 1, max_points).astype(int)
+    def pick(array: np.ndarray, idx: np.ndarray) -> list[float]:
         return [float(v) for v in array[idx]]
 
+    pr_idx = thin_curve(recall, precision, max_points)
+    roc_idx = thin_curve(fpr, tpr, max_points)
     return {
         "pr_curve": {
-            "recall": thin(recall),
-            "precision": thin(precision),
-            "thresholds": thin(np.append(pr_thresholds, 1.0)),
+            "recall": pick(recall, pr_idx),
+            "precision": pick(precision, pr_idx),
+            "thresholds": pick(np.append(pr_thresholds, 1.0), pr_idx),
         },
-        "roc_curve": {"fpr": thin(fpr), "tpr": thin(tpr)},
+        "roc_curve": {"fpr": pick(fpr, roc_idx), "tpr": pick(tpr, roc_idx)},
     }
 
 

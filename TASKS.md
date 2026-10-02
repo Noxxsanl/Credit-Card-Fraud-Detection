@@ -17,13 +17,13 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 3. Chiến lược mất cân bằng | 4 | 4 | ✅ |
 | 4. Tinh chỉnh và kiểm chứng | 5 | 5 | ✅ |
 | 5. Ngưỡng, chi phí, SHAP | 6 | 6 | ✅ |
-| 6. Xuất hiện vật | 4 | 0 | |
-| 🚩 Mốc quyết định A/B | 1 | 0 | |
-| 7. API | 11 | 0 | |
-| 8. Giao diện | 7 | 0 | |
+| 6. Xuất hiện vật | 4 | 4 | ✅ |
+| 🚩 Mốc quyết định A/B | 1 | 1 | ✅ B |
+| 7. API | 11 | 11 | ✅ |
+| 8. Giao diện | 7 | 7 | ✅ |
 | 9. Đóng gói | 5 | 0 | |
 | 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **34** | **51%** |
+| **Tổng** | **67** | **57** | **85%** |
 
 ---
 
@@ -348,50 +348,290 @@ mean|SHAP| lấy từ `reports/shap_ranking.csv`.
 
 ---
 
-## Giai đoạn 6 — Xuất hiện vật (ngày 14)
+## Giai đoạn 6 — Xuất hiện vật (ngày 14) ✅
 
-- [ ] **T-35** `notebooks/08_export_artifacts.ipynb` sinh `models/model.joblib` (pipeline **hoàn chỉnh**, gồm cả scaler) — *xong là khi:* nạp lại tệp và `predict_proba` cho đúng kết quả như trong notebook (AR-02).
-- [ ] **T-36** Sinh `models/explainer.joblib`, `models/metrics.json`, `models/threshold.json` — *xong là khi:* cấu trúc khớp [docs/06 §6](docs/06-thiet-ke-luu-tru.md).
-- [ ] **T-37** Sinh `data/sample_pool.json` khoảng 200 giao dịch, đủ 4 nhóm `fraud_easy` / `fraud_hard` / `legit_easy` / `legit_hard` — *xong là khi:* mỗi nhóm "hard" có ít nhất 20 mẫu.
-- [ ] **T-38** **Kiểm tra tái lập**: chạy lại toàn bộ notebook trong kernel sạch — *xong là khi:* PR-AUC lệch dưới 0,001 (AC-M5, NFR-07).
+- [x] **T-35** `notebooks/08_export_artifacts.ipynb` sinh `models/model.joblib` (pipeline **hoàn chỉnh**, gồm cả scaler) — *xong là khi:* nạp lại tệp và `predict_proba` cho đúng kết quả như trong notebook (AR-02).
+- [x] **T-36** Sinh `models/explainer.joblib`, `models/metrics.json`, `models/threshold.json` — *xong là khi:* cấu trúc khớp [docs/06 §6](docs/06-thiet-ke-luu-tru.md).
+- [x] **T-37** Sinh `data/sample_pool.json` khoảng 200 giao dịch, đủ 4 nhóm `fraud_easy` / `fraud_hard` / `legit_easy` / `legit_hard` — *xong là khi:* mỗi nhóm "hard" có ít nhất 20 mẫu.
+- [x] **T-38** **Kiểm tra tái lập**: chạy lại toàn bộ notebook trong kernel sạch — *xong là khi:* PR-AUC lệch dưới 0,001 (AC-M5, NFR-07).
+
+### Cách chạy
+
+```powershell
+.\.venv\Scripts\python.exe -m jupyter nbconvert --to notebook --execute --inplace `
+    --ExecutePreprocessor.timeout=3600 notebooks\08_export_artifacts.ipynb     # 5–10 phút
+.\.venv\Scripts\python.exe -m pytest tests\test_artifacts.py                 # kiểm chính các tệp vừa sinh
+.\.venv\Scripts\python.exe scripts\check_reproducibility.py                  # T-38: 01 → 08 trong kernel sạch, ~70 phút
+```
+
+Notebook 08 phải chạy **sau** notebook 03 (chạy lại 03 là mất cột `risk_score` của
+`test_set.parquet`). Đủ lệnh, hiện vật, số đối chiếu và các bẫy đã gặp:
+[docs/lenh-chay-giai-doan-6.md](docs/lenh-chay-giai-doan-6.md). Cấu trúc từng tệp:
+[docs/06 §6](docs/06-thiet-ke-luu-tru.md), đã viết lại theo số thật.
+
+### Ghi chú khi làm xong giai đoạn 6
+
+**Không có con số mới nào ở giai đoạn này.** Notebook 08 tính lại mọi thứ từ đầu, so với bảng mà
+notebook 03–07 đã ghi vào `reports/` ở những phiên chạy khác, và dừng ở `assert` nếu lệch.
+
+| Đối chiếu | Lệch lớn nhất |
+|---|---|
+| điểm out-of-fold tính lại với `grid_results.npz` của giai đoạn 3 | **0** (trùng từng bit) |
+| 5 ngưỡng với notebook 06 | 6·10⁻¹⁷ |
+| chỉ số chính và **cả hai đầu** khoảng tin cậy với notebook 05 | 1·10⁻¹⁶ |
+| `mean|SHAP|` với notebook 07 (tương đối) | 4·10⁻⁸ |
+
+**1. T-35 — `model.joblib` 1,2 MB, trùng từng bit khi nạp lại.** Pipeline hai bước: `RobustScaler`
+cho `Amount` (trung vị 22,08, IQR 72,16, học chỉ trên tập train) → `XGBClassifier`. Kiểm hai lần:
+nạp lại trong notebook, và nạp lại trong **một tiến trình Python mới** đọc `test_set.parquet` qua
+`build_features()` — đúng đường đi của API. Cả hai cho `predict_proba` trùng từng bit trên 56.746
+giao dịch. `test_set.parquet` có thêm cột `risk_score` (32 cột, 15,9 MB).
+
+**2. T-36 — ba tệp đúng cấu trúc 06 §6, trùng số với báo cáo.**
+
+- `threshold.json`: τ\* = **0,023173** cùng 4 phương án, chọn trên out-of-fold.
+- `explainer.joblib` 4,2 MB: tính cộng khớp margin tới 2,2·10⁻⁵. Giải thích **một** giao dịch mất trung
+  vị 17–21 ms, chậm nhất 39–71 ms qua hai lần chạy, dưới ngân sách 50–200 ms của NFR-01.
+- `metrics.json` 1,6 MB (90% là `test_scores`), dưới dự báo 3–8 MB nên chưa cần tách ra `.npz`.
+  Ngoài 12 khóa bắt buộc có thêm 6 khóa cho UI-04 và API: `strategy_pr_curves`, `baseline_comparison`,
+  `threshold_options`, `training`, `fingerprint`, `environment`.
+- Khoảng tin cậy trùng báo cáo tới 10⁻¹⁶ là **có chủ đích**: bootstrap phụ thuộc thứ tự dòng, nên
+  chỉ số tính trên thứ tự của `split_data()` như notebook 05, còn `test_scores` theo thứ tự của
+  `test_set.parquet`. Tính trên thứ tự của tệp thì khoảng tin cậy lệch ở chữ số thứ ba.
+
+**3. T-37 — 200 mẫu: `fraud_easy` 29, `fraud_hard` 21, `legit_easy` 112, `legit_hard` 38.**
+
+- `fraud_hard` = **toàn bộ** gian lận có điểm dưới 0,5 của tập kiểm thử: 18 vụ bị bỏ lọt ở τ\* và 3 vụ
+  chỉ bắt được khi hạ ngưỡng về τ\* — đúng 3 vụ "bắt thêm" trong câu diễn giải của T-30. Lấy mốc τ\*
+  cho cả gian lận thì chỉ còn 18, không đạt điều kiện 20.
+- `legit_hard` = toàn bộ 38 cảnh báo giả ở τ\*, trong đó 4 vụ vượt cả 0,5.
+- **Biên của `fraud_hard` mỏng (21 so với 20)**; `validate_sample_pool` chặn việc xuất nếu huấn luyện
+  lại làm nhóm này tụt dưới 20.
+- Mô tả từng mẫu viết số theo tiếng Việt (dấu phẩy thập phân) vì giao diện hiện nguyên văn.
+
+**4. T-38 — tái lập tuyệt đối trên cùng máy.** `scripts/check_reproducibility.py` chạy lại 9 notebook
+01 → 08, mỗi notebook một kernel mới, tổng **71 phút** (notebook 05 chiếm 33).
+
+| So trước và sau | Kết quả |
+|---|---|
+| PR-AUC | 0,8252465892 → 0,8252465892, **lệch 0** (dung sai 0,001) — AC-M5 đạt |
+| 12 con số chính và τ\* | lệch 0 |
+| Dấu vân tay điểm test và điểm out-of-fold | trùng |
+| 11 bảng `reports/*.csv`, mọi hình PNG | trùng hoàn toàn (trừ cột đo thời gian chạy) |
+
+Hai giới hạn phải nói khi báo cáo: script **không** chạy lại `run_grid.py` và `run_search.py` (notebook
+04, 05 đọc điểm lưu; notebook 08 bù bằng cách tính lại điểm out-of-fold của mô hình được chọn), và mới
+kiểm trên **một** máy 12 lõi. Kết quả từng dòng: `reports/reproducibility.csv`.
+
+**Phát sinh thêm:** `src/artifacts.py` (dựng, ghi JSON chặt và nguyên tử, kiểm tra cấu trúc — API sẽ
+dùng lại ở T-44); `tests/test_artifacts.py` (23 ca đơn vị + 7 ca tích hợp trên chính các tệp đã
+xuất); `scripts/check_reproducibility.py`; notebook 08 được thêm vào danh sách quét của
+`test_no_leakage.py`; hình `reports/figures/08_sample_pool.png`. Tài liệu: viết lại 06 §6 theo cấu
+trúc thật, cập nhật 06 §2/§9/§10, 10 §3/§6, `models/README.md`, bảng notebook trong README.
+
+**Mang sang giai đoạn 7:**
+
+- `model_version = "xgb_scaleposweight_v1"`; τ mặc định cho bảng `settings` lấy từ `threshold.json`.
+- `/explain` phải đưa `model[:-1].transform(build_features(x))` vào explainer, **không** đưa
+  `build_features(x)`; tên đặc trưng theo `metrics.json → training.model_feature_names` (`Amount`
+  đứng đầu). SHAP ở thang log-odds, `base_value` = `training.shap_base_value`.
+- API gọi `validate_threshold`, `validate_metrics` lúc khởi động và trả 503 nếu hiện vật sai (T-44).
+- `app.py` (phương án A) vẫn nạp `models/best_model.pkl` cũ — phải trỏ sang `model.joblib` nếu mốc
+  T-39 chọn phương án A.
 
 ---
 
-## 🚩 Mốc quyết định — cuối ngày 14
+## 🚩 Mốc quyết định — cuối ngày 14 ✅
 
-- [ ] **T-39** Chốt phương án ứng dụng và ghi vào README — *xong là khi:* quyết định được viết ra, không để lửng.
+- [x] **T-39** Chốt phương án ứng dụng và ghi vào README — *xong là khi:* quyết định được viết ra, không để lửng.
+  **→ Đã chốt phương án B** (2026-09-28, [README](README.md#phương-án-ứng-dụng--đã-chốt-b-t-39)): hiện vật đủ và đã kiểm, giai đoạn 0–6 xong 38/38 việc, T-38 tái lập lệch 0.
   - Hiện vật đã đủ, còn đủ 6 ngày → **phương án B** (FastAPI + web riêng), làm tiếp giai đoạn 7.
   - Còn nợ việc ở phần mô hình → **phương án A** (Streamlit trong `app.py`), bỏ giai đoạn 7, làm rút gọn giai đoạn 8, dồn thời gian cho báo cáo.
 
 ---
 
-## Giai đoạn 7 — API (ngày 15–16, chỉ phương án B)
+## Giai đoạn 7 — API (ngày 15–16, chỉ phương án B) ✅
 
-- [ ] **T-40** `docker-compose.yml` dịch vụ `db` (postgres:16-alpine) + volume `pgdata` + healthcheck `pg_isready` — *xong là khi:* `docker compose up -d db` và `pg_isready` trả `accepting connections`. **Làm đầu tiên trong giai đoạn này** (rủi ro R-09).
-- [ ] **T-41** `api/db.py` engine + pool (`pool_pre_ping=True`) và `api/models_orm.py` — *xong là khi:* kết nối được bằng `DATABASE_URL` từ `.env`.
-- [ ] **T-42** Alembic `0001_initial_schema` (3 bảng, chỉ mục, ràng buộc `CHECK`) và `0002_seed_settings` — *xong là khi:* `upgrade head` → `downgrade base` → `upgrade head` chạy trọn vẹn (TC-47).
-- [ ] **T-43** `api/schemas.py` — toàn bộ Pydantic vào/ra theo [docs/05](docs/05-thiet-ke-api.md) — *xong là khi:* thiếu cột trả 422 kèm danh sách cột thiếu (TC-32).
-- [ ] **T-44** `api/main.py` nạp hiện vật lúc startup + `/health` — *xong là khi:* `/health` trả 503 khi thiếu mô hình hoặc mất cơ sở dữ liệu (TC-42).
-- [ ] **T-45** API-02, API-03: `/score`, `/score/batch` — *xong là khi:* chấm một mẫu và chấm lô cho cùng kết quả (TC-50).
-- [ ] **T-46** API-04: `/score/upload` dùng `COPY` của PostgreSQL — *xong là khi:* 10.000 dòng chấm điểm và ghi xong dưới 30 giây (NFR-02, AC-A1, TC-54).
-- [ ] **T-47** API-09…API-12: nhóm ngưỡng — *xong là khi:* `/threshold/preview` trả trong khoảng 10 ms và `/threshold/optimize` báo đúng `constraint_binding`.
-- [ ] **T-48** API-05: `/explain` — *xong là khi:* trả đúng 5 yếu tố dương và 3 yếu tố âm, khớp giá trị SHAP tính trong notebook (AC-A4).
-- [ ] **T-49** API-06…API-08: `/transactions`, `/reviews` với `ON CONFLICT DO UPDATE` — *xong là khi:* gửi thẩm định hai lần không tạo dòng thứ hai (TC-38) và `threshold_used` được ghi đúng (TC-39).
-- [ ] **T-50** API-13…API-15: `/metrics`, `/samples`, `/replay/stream` (SSE) — *xong là khi:* phát lại chạy liên tục 3 phút không lỗi (AC-A6).
+- [x] **T-40** `docker-compose.yml` dịch vụ `db` (postgres:16-alpine) + volume `pgdata` + healthcheck `pg_isready` — *xong là khi:* `docker compose up -d db` và `pg_isready` trả `accepting connections`. **Làm đầu tiên trong giai đoạn này** (rủi ro R-09).
+- [x] **T-41** `api/db.py` engine + pool (`pool_pre_ping=True`) và `api/models_orm.py` — *xong là khi:* kết nối được bằng `DATABASE_URL` từ `.env`.
+- [x] **T-42** Alembic `0001_initial_schema` (3 bảng, chỉ mục, ràng buộc `CHECK`) và `0002_seed_settings` — *xong là khi:* `upgrade head` → `downgrade base` → `upgrade head` chạy trọn vẹn (TC-47).
+- [x] **T-43** `api/schemas.py` — toàn bộ Pydantic vào/ra theo [docs/05](docs/05-thiet-ke-api.md) — *xong là khi:* thiếu cột trả 422 kèm danh sách cột thiếu (TC-32).
+- [x] **T-44** `api/main.py` nạp hiện vật lúc startup + `/health` — *xong là khi:* `/health` trả 503 khi thiếu mô hình hoặc mất cơ sở dữ liệu (TC-42).
+- [x] **T-45** API-02, API-03: `/score`, `/score/batch` — *xong là khi:* chấm một mẫu và chấm lô cho cùng kết quả (TC-50).
+- [x] **T-46** API-04: `/score/upload` dùng `COPY` của PostgreSQL — *xong là khi:* 10.000 dòng chấm điểm và ghi xong dưới 30 giây (NFR-02, AC-A1, TC-54).
+- [x] **T-47** API-09…API-12: nhóm ngưỡng — *xong là khi:* `/threshold/preview` trả trong khoảng 10 ms và `/threshold/optimize` báo đúng `constraint_binding`.
+- [x] **T-48** API-05: `/explain` — *xong là khi:* trả đúng 5 yếu tố dương và 3 yếu tố âm, khớp giá trị SHAP tính trong notebook (AC-A4).
+- [x] **T-49** API-06…API-08: `/transactions`, `/reviews` với `ON CONFLICT DO UPDATE` — *xong là khi:* gửi thẩm định hai lần không tạo dòng thứ hai (TC-38) và `threshold_used` được ghi đúng (TC-39).
+- [x] **T-50** API-13…API-15: `/metrics`, `/samples`, `/replay/stream` (SSE) — *xong là khi:* phát lại chạy liên tục 3 phút không lỗi (AC-A6).
+
+### Cách chạy
+
+```powershell
+Copy-Item .env.example .env                                    # máy đã có PostgreSQL ở 5432: đặt POSTGRES_HOST_PORT=5433
+docker compose up -d db                                        # T-40
+.\.venv\Scripts\python.exe -m alembic upgrade head             # T-42
+.\.venv\Scripts\python.exe -m pytest tests\test_db.py tests\test_scoring.py tests\test_api.py   # ~3 phút
+.\.venv\Scripts\python.exe -m uvicorn api.main:app --reload --port 8000                          # /docs
+```
+
+Đủ lệnh, số đối chiếu, cách kiểm AC-A6 trên uvicorn và các bẫy đã gặp:
+[docs/lenh-chay-giai-doan-7.md](docs/lenh-chay-giai-doan-7.md). Những điểm bản thi hành cụ thể hơn
+hợp đồng ban đầu: [docs/05 §7](docs/05-thiet-ke-api.md).
+
+### Ghi chú khi làm xong giai đoạn 7
+
+**Kết quả theo điều kiện "xong là khi":**
+
+| Việc | Điều kiện | Kết quả |
+|---|---|---|
+| T-40 | `pg_isready` trả `accepting connections` | đạt; cổng máy chủ 5433 vì máy đã có PostgreSQL 17 ở 5432 |
+| T-41 | kết nối bằng `DATABASE_URL` từ `.env` | đạt; `pool_pre_ping`, `connect_timeout=3` |
+| T-42 | `upgrade → downgrade → upgrade` trọn vẹn | đạt, lược đồ cuối trùng lược đồ đầu (TC-47) |
+| T-43 | thiếu cột → 422 kèm danh sách | đạt: `{"missing": ["V13"]}` (TC-32) |
+| T-44 | `/health` 503 khi thiếu mô hình hoặc mất db | đạt, cả khi hiện vật hỏng; tiến trình không sập (TC-42) |
+| T-45 | chấm một mẫu = chấm lô | đạt, sai số < 1e-12 trên 100 giao dịch (TC-50) |
+| T-46 | 10.000 dòng dưới 30 giây | **2,0 giây**; `COPY` 10.000 dòng 0,53 giây, nhanh gấp 158 lần `INSERT` từng dòng (TC-54) |
+| T-47 | preview khoảng 10 ms; optimize báo đúng `constraint_binding` | phần tính 0,12 ms (15 ms qua HTTP); 5 tình huống ràng buộc đều đúng |
+| T-48 | 5 dương + 3 âm, khớp SHAP của notebook | đạt với mọi giao dịch vượt ngưỡng được kiểm, SHAP khớp explainer tới từng bit — xem điểm 2 |
+| T-49 | thẩm định hai lần không tạo dòng thứ hai; `threshold_used` đúng | đạt (TC-38, TC-39) |
+| T-50 | phát lại 3 phút không lỗi | 185 giây trên uvicorn thật, 1.532 giao dịch, 0 lỗi (AC-A6) |
+
+Toàn bộ kiểm thử: **311 xanh, 1 bỏ qua** (TC-12, chờ UI-03). Máy không có PostgreSQL thì 88 ca cần
+cơ sở dữ liệu tự bỏ qua. NFR-01: p95 của `/score` **45,6 ms** phía máy chủ (57,8 ms tính cả lớp HTTP
+của `TestClient`), đo khi máy có tải nền khoảng 50% CPU — biên mỏng.
+
+**1. `POST /threshold/optimize` chọn ngưỡng trên out-of-fold, không trên tập kiểm thử.** Đây là một phép
+**chọn** ngưỡng nên ML-08 áp dụng. Notebook 08 xuất thêm `models/oof_scores.npz` (0,8 MB, float32 giữ
+nguyên kiểu). Với chi phí mặc định, API trả **đúng** 0,023172983899712563 của `threshold.json`; chỉ số
+tại ngưỡng vẫn đo trên tập kiểm thử. Có ràng buộc thì nghiệm là "chi phí thấp nhất trong vùng khả
+thi", nên với 200 cảnh báo/ngày API chọn 0,9657. `threshold.json` ghi 0,9625 cho cùng ngân sách vì
+đó là "recall cao nhất trong ngân sách". Hai câu hỏi khác nhau, hai con số đều đúng.
+
+**2. AC-A4 không đạt được theo nghĩa đen với mọi giao dịch.** 77% giao dịch của tập kiểm thử có
+**ít hơn 5** đặc trưng SHAP dương: với giao dịch hợp lệ điểm thấp, mô hình kéo gần hết đặc trưng về
+phía an toàn. `/explain` trả tối đa 5 dương và 3 âm, không mượn một đóng góp âm để cho đủ 5 — làm vậy
+là gọi một yếu tố kéo điểm xuống là "đẩy lên". Trong hàng đợi (điểm ≥ τ\*) 114/115 giao dịch có đủ 5;
+yếu tố âm luôn đủ 3. Báo cáo và buổi bảo vệ nên nói đúng như vậy.
+
+**3. Serve bằng một luồng XGBoost.** Chấm một giao dịch bằng 12 luồng cho p95 87 ms (trượt NFR-01).
+Chấm bằng 1 luồng cho **cùng từng bit** trên 56.746 giao dịch — chỉ huấn luyện mới phụ thuộc số luồng
+(10 §6) — và p95 còn 45,6 ms. Lô 10.000 dòng chậm đi (0,06 → 0,26 giây), vẫn xa ngân sách 30 giây.
+
+**4. Ngưỡng người dùng đặt gắn với `model_version`.** Bảng `settings` không nạp sẵn khóa `threshold`
+nữa. Dòng này chỉ có khi người dùng tự đặt, và chỉ có hiệu lực với đúng mô hình lúc đặt. Nạp sẵn
+một con số như thiết kế cũ thì sau khi huấn luyện lại, bảng vẫn giữ τ\* của mô hình cũ mà không ai biết.
+
+**5. Điểm rủi ro không làm tròn trong phản hồi** (khác 05 §5 cũ). Máy chủ làm tròn 0,023170 thành
+0,0232 thì trình duyệt thấy "vượt τ\*" trong khi máy chủ quyết định `allow`.
+
+**Phát sinh thêm:** `api/config.py`, `api/loader.py` (kiểm hiện vật lúc khởi động, chấm lại 1/50 tập
+kiểm thử để bắt lệch phiên bản thư viện), `api/errors.py`, `api/services/runtime_settings.py`,
+`api/services/transactions.py`; `src/artifacts.py` thêm `write/read/validate_oof_scores`; notebook 08
+thêm mục 3.4; `.env.example`; `alembic.ini` ở gốc repo, **chỉ ASCII** (Alembic đọc bằng cp1252 trên
+Windows); `httpx`, `pytest` vào `requirements.txt`; `models/*.npz` vào `.gitignore`. Tài liệu:
+docs/05 §2 (bảng `decision`), §4 (mã `INVALID_BODY`, `METHOD_NOT_ALLOWED`), §7 mới; docs/06 §2,
+§4.4, §5, §6.4; docs/03 §3.2, §7; docs/08 §2.6; docs/10 §2.2, §2.3, §5.
+
+**Mang sang giai đoạn 8:**
+
+- API chạy bằng `uvicorn api.main:app --port 8000`; CORS mở cho `http://localhost:3000`.
+- UI-D1: tải `GET /api/v1/metrics?section=test_scores` **một lần**, tính TP/FP/FN trong trình duyệt,
+  so bằng `score >= τ` trên số thực nguyên độ chính xác. TC-12 (T-54) đối chiếu với
+  `src/threshold.confusion_counts`.
+- UI-03: đường cong chi phí lấy từ `POST /threshold/optimize` (trên out-of-fold, `curve_source`),
+  còn số ở thanh trượt tính trên tập kiểm thử — hai nguồn khác nhau, nhãn trên màn hình phải nói rõ.
+- UI-02: `POST /explain {transaction_id}`; danh sách yếu tố có thể ngắn hơn 5 ở giao dịch điểm thấp;
+  nhãn thật chỉ lấy từ phản hồi của `POST /reviews`.
+- UI-05: SSE `GET /replay/stream?speed=…&start=…`; tạm dừng là đóng `EventSource`, tiếp tục là mở lại
+  với `start` bằng `sim_seconds` cuối cùng đã nhận.
 
 ---
 
-## Giai đoạn 8 — Giao diện (ngày 17–19)
+## Giai đoạn 8 — Giao diện (ngày 17–19) ✅
 
 Thứ tự dưới đây đồng thời là thứ tự **giữ lại** nếu thiếu thời gian.
 
-- [ ] **T-51** Khung ứng dụng: thanh bên 4 mục, thanh trên luôn hiện ngưỡng và `model_version` — *xong là khi:* điều hướng được giữa các màn hình.
-- [ ] **T-52** UI-01 hàng đợi thẩm định — *xong là khi:* sắp đúng theo điểm giảm dần (AC-A2), có trạng thái rỗng hướng dẫn 3 cách nạp dữ liệu.
-- [ ] **T-53** UI-03 cấu hình ngưỡng, tính tại máy khách theo UI-D1 — *xong là khi:* kéo thanh trượt cập nhật dưới 200 ms (AC-A3) và đổi tham số chi phí làm dịch chuyển ngưỡng tối ưu (AC-A5).
-- [ ] **T-54** Viết `tests/test_threshold_parity.py` cho TC-12 và bỏ `@pytest.mark.skip` — *xong là khi:* hàm JavaScript và `src/threshold.py` cho cùng TP/FP/FN trên 20 ngưỡng mẫu.
-- [ ] **T-55** UI-02 chi tiết giao dịch + biểu đồ thác nước SHAP — *xong là khi:* chú thích PCA cố định hiện diện và nhãn thật chỉ hiện **sau** khi người dùng quyết định.
-- [ ] **T-56** UI-05 chế độ phát lại qua SSE — *xong là khi:* điều khiển phát / tạm dừng / đặt lại và đồng hồ mô phỏng hoạt động.
-- [ ] **T-57** UI-04 hiệu năng mô hình — *xong là khi:* có đủ 7 mục ở [docs/07 §6](docs/07-thiet-ke-giao-dien.md). **Được phép cắt đầu tiên**, thay tạm bằng ảnh PNG từ notebook.
+- [x] **T-51** Khung ứng dụng: thanh bên 4 mục, thanh trên luôn hiện ngưỡng và `model_version` — *xong là khi:* điều hướng được giữa các màn hình.
+- [x] **T-52** UI-01 hàng đợi thẩm định — *xong là khi:* sắp đúng theo điểm giảm dần (AC-A2), có trạng thái rỗng hướng dẫn 3 cách nạp dữ liệu.
+- [x] **T-53** UI-03 cấu hình ngưỡng, tính tại máy khách theo UI-D1 — *xong là khi:* kéo thanh trượt cập nhật dưới 200 ms (AC-A3) và đổi tham số chi phí làm dịch chuyển ngưỡng tối ưu (AC-A5).
+- [x] **T-54** Viết `tests/test_threshold_parity.py` cho TC-12 và bỏ `@pytest.mark.skip` — *xong là khi:* hàm JavaScript và `src/threshold.py` cho cùng TP/FP/FN trên 20 ngưỡng mẫu.
+- [x] **T-55** UI-02 chi tiết giao dịch + biểu đồ thác nước SHAP — *xong là khi:* chú thích PCA cố định hiện diện và nhãn thật chỉ hiện **sau** khi người dùng quyết định.
+- [x] **T-56** UI-05 chế độ phát lại qua SSE — *xong là khi:* điều khiển phát / tạm dừng / đặt lại và đồng hồ mô phỏng hoạt động.
+- [x] **T-57** UI-04 hiệu năng mô hình — *xong là khi:* có đủ 7 mục ở [docs/07 §6](docs/07-thiet-ke-giao-dien.md). **Được phép cắt đầu tiên**, thay tạm bằng ảnh PNG từ notebook.
+
+### Cách chạy
+
+```powershell
+docker compose up -d db
+.\.venv\Scripts\python.exe -m uvicorn api.main:app --port 8000        # cửa sổ 1
+.\.venv\Scripts\python.exe -m http.server 3000 --directory web        # cửa sổ 2 → http://localhost:3000
+.\.venv\Scripts\python.exe -m pytest tests\test_threshold_parity.py   # TC-12, cần Node.js
+```
+
+Đủ lệnh, cách nạp dữ liệu demo, số đối chiếu và các bẫy đã gặp:
+[docs/lenh-chay-giai-doan-8.md](docs/lenh-chay-giai-doan-8.md). Những điểm bản thi hành cụ thể hơn
+thiết kế: [docs/07 §12](docs/07-thiet-ke-giao-dien.md).
+
+### Ghi chú khi làm xong giai đoạn 8
+
+**Kết quả theo điều kiện "xong là khi"** — đo bằng Puppeteer điều khiển Chrome 153 thật, trên API và
+PostgreSQL thật:
+
+| Việc | Điều kiện | Kết quả |
+|---|---|---|
+| T-51 | điều hướng được giữa các màn hình | đạt: thanh bên 4 mục, địa chỉ `#/…` (tải lại giữ màn hình), thanh trên luôn hiện ngưỡng, nguồn của ngưỡng và trạng thái API/CSDL; chân thanh bên hiện `model_version` và ngày huấn luyện |
+| T-52 | sắp đúng theo điểm giảm dần; trạng thái rỗng hướng dẫn 3 cách nạp | đạt: 75 điểm thật trên 3 trang đầu giảm dần (AC-A2); trạng thái rỗng tách "chưa có dữ liệu" và "lọc hết" |
+| T-53 | kéo thanh trượt dưới 200 ms; đổi chi phí dịch ngưỡng tối ưu | lâu nhất **20,4 ms** trên 21 lần kéo 0,5 → τ\* (AC-A3); chi phí bỏ lọt 600 EUR dời ngưỡng tối ưu 0,02317 → 0,002262 (AC-A5) |
+| T-54 | JS và Python cùng TP/FP/FN trên 20 ngưỡng | đạt, sai lệch 0 — và precision, recall, F1, chi phí trùng từng bit; `@pytest.mark.skip` đã bỏ |
+| T-55 | chú thích PCA cố định; nhãn thật chỉ hiện sau khi quyết định | đạt; thác nước SHAP 5 dương + 3 âm khép từ giá trị cơ sở tới f(x); `F`/`A`/`Esc` hoạt động, trọng tâm trả về đúng dòng |
+| T-56 | phát / tạm dừng / đặt lại và đồng hồ mô phỏng | đạt: 600× trong 6 giây = 1 giờ mô phỏng, 766 giao dịch; tạm dừng thì đứng yên, tiếp tục không đếm trùng |
+| T-57 | đủ 7 mục của 07 §6 | đạt cả 7, thêm đường PR và ROC của mô hình xuất (FR-42) |
+
+Toàn bộ kiểm thử: **323 xanh, 0 bỏ qua** (318 khi mới có bản `web/`; thêm 5 ca TC-12 cho bản Next.js). Tải CSV 10.000 dòng qua giao diện: 2,2 giây (AC-A1).
+Console trình duyệt không lỗi trên cả bốn màn hình.
+
+**1. Sửa một lỗi của hiện vật, phát hiện qua UI-04.** Đường PR trong `metrics.json` vẽ ra thành một
+đoạn thẳng: `src.evaluate.curve_points` lấy điểm đều theo chỉ số ngưỡng, nên cả vùng precision cao
+chỉ còn 2/500 điểm. Nay rải điểm theo chiều dài đường cong (`thin_curve`), có ca kiểm thử canh, và
+notebook 08 đã chạy lại: `model.joblib`, OOF, tập kiểm thử trùng từng byte, SHAP trùng từng bit; chỉ
+khác `trained_at`, `fit_seconds` và ba khóa đường cong. Hình `04_pr_curves_*.png` của notebook 04
+không bị ảnh hưởng — chúng vẽ từ đường đầy đủ.
+
+**2. Thanh trượt theo thang log, không tuyến tính.** Với mô hình thật τ\* = 0,0232 nằm ở 2% đầu một
+thanh tuyến tính, và bước 0,001 lớn gấp đôi ngưỡng "recall ≥ 90%" (0,00054). Thang log trải đều
+vùng 0,0005…0,97; ô nhập số cho giá trị chính xác. Phím: `←`/`→` ±2,3%, `PgUp`/`PgDn` ±26%.
+
+**3. Mọi chi phí quy ra EUR/ngày.** Đường cong (out-of-fold, 80% dữ liệu) và các ô số (tập kiểm thử,
+20%) cùng một thang; ô chi phí vẫn ghi con số trên tập kiểm thử (2.389,78 EUR tại τ\*) để khớp báo cáo.
+
+**4. Kịch bản bảo vệ phải nói đúng số của mô hình thật.** Kéo 0,5 → τ\* chỉ tăng số bắt được từ
+**74/95 lên 77/95** và giảm chi phí từ 6.466 xuống 5.974 EUR/ngày — không phải "60 lên 83" như ví dụ ở
+07 §5 (viết trước khi có mô hình). Điểm đáng nói là cái giá: cảnh báo tăng từ 195 lên 287/ngày.
+Đổi chi phí bỏ lọt lên 600 EUR là đoạn trình diễn ấn tượng hơn: ngưỡng tối ưu lùi 10 lần.
+
+**5. Không cần mạng.** Alpine.js và Chart.js chép vào `web/vendor/` kèm mã băm, không nạp từ CDN (NFR-08).
+
+**6. Thêm bản Next.js trong `frontend/`** (theo yêu cầu, sau khi xong bản `web/`): Next.js 16 + TypeScript +
+Tailwind 4 + Recharts 3, xuất tĩnh ra `frontend/out/`. Cùng bốn màn hình, cùng số; kịch bản thử tự động
+21/21 đạt, AC-A3 lâu nhất 39 ms, `tsc` và ESLint sạch. TC-12 nay đối chiếu **cả hai** tệp UI-D1 với Python
+(`web/threshold.js` và `frontend/src/lib/threshold.mjs`). Bản `web/` giữ làm dự phòng. So sánh hai bản:
+[docs/07 §13](docs/07-thiet-ke-giao-dien.md); lệnh chạy: [docs/lenh-chay-giai-doan-8 §6](docs/lenh-chay-giai-doan-8.md).
+
+**Phát sinh thêm:** `web/config.js` (địa chỉ API, để giai đoạn 9 thay khi đóng gói), hộp thoại thư
+viện mẫu, `src.evaluate.thin_curve`, 2 ca trong `tests/test_artifacts.py`. Tài liệu: docs/07 §12 mới,
+docs/06 §3 (cách rút mẫu đường cong), docs/08 §2.7, docs/10 §4.2, `docs/lenh-chay-giai-doan-8.md`.
+
+**Mang sang giai đoạn 9:**
+
+- Chọn bản giao diện để đóng gói. Bản Next.js: `web/Dockerfile` (hoặc `frontend/Dockerfile`) build hai
+  tầng — `node:20` chạy `npm ci && npm run build`, rồi nginx phục vụ `out/` ở cổng 3000; build trên Linux
+  nên không cần bước làm phẳng tên tệp. Bản Alpine: chỉ cần phục vụ tĩnh thư mục `web/`.
+  `web/config.js` mặc định gọi `http://<cùng máy>:8000/api/v1` — đúng khi Compose mở cổng 8000 ra
+  máy chủ; nếu đặt proxy `/api` trong nginx thì chỉ sửa `apiBase` trong tệp này.
+- `CORS_ORIGINS` của dịch vụ `api` phải chứa origin mà trình duyệt thấy (`http://localhost:3000`).
+- AC-A9 (T-61): đã thử sơ bộ — Tab đi qua thanh bên, các nút, bộ lọc, dòng hàng đợi, thanh trượt;
+  `Enter` mở chi tiết. Cần một lượt đầy đủ bằng tay và Lighthouse.
+- Chạy lại notebook 08 thì phải khởi động lại API để nạp `metrics.json` mới.
 
 ---
 

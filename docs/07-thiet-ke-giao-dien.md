@@ -266,3 +266,60 @@ nhất ở máy chủ, `Alpine.store` hoặc một đối tượng JavaScript th
 
 Xem [08 — Kế hoạch kiểm thử §4](08-ke-hoach-kiem-thu.md) cho danh sách AC-A1…AC-A10
 và cách kiểm chứng.
+
+## 12. Bản thi hành — những điểm cụ thể hơn hoặc khác thiết kế ban đầu
+
+Giai đoạn 8 (2026-09-28). Mã nằm trong `web/`: `index.html` (khung và bốn màn hình), `app.js`
+(trạng thái Alpine, gọi API), `threshold.js` (UI-D1), `charts.js` (Chart.js), `styles.css`,
+`config.js` (địa chỉ API). Alpine.js 3.17.4 và Chart.js 4.5.1 **chép vào `web/vendor/`**, không nạp
+từ CDN: buổi bảo vệ không được phụ thuộc mạng (NFR-08). Lệnh chạy:
+[lenh-chay-giai-doan-8.md](lenh-chay-giai-doan-8.md).
+
+| Màn hình | Điểm | Lý do |
+|---|---|---|
+| Chung | Điều hướng bằng địa chỉ `#/queue`, `#/threshold`, `#/performance`, `#/replay` | Tải lại trang giữ nguyên màn hình; nút Back của trình duyệt dùng được |
+| Chung | Thanh trên hiện cả trạng thái API/CSDL (thăm `/health` mỗi 15 giây), cạnh ngưỡng | Mất CSDL hay thiếu hiện vật thì hiện dải thông báo kèm đúng lệnh cần chạy. Thanh trượt ngưỡng và UI-04 không cần CSDL nên vẫn dùng được |
+| UI-01 | Màu theo điểm tuyệt đối như §3, **thêm** cột "Đề xuất" (`decision` của API: chặn khi ≥ 3τ, cần thẩm định khi τ…3τ) | Mức 60%/90% không nói gì về hành động; dải tương đối với τ mới là thứ quyết định chặn hay xem xét |
+| UI-01 | Bộ lọc mặc định "Tất cả", không phải "Chờ xử lý" | Dòng vừa thẩm định đứng tại chỗ và đổi trạng thái ngay, thay vì biến mất khỏi danh sách |
+| UI-01 | Dòng tóm tắt nói rõ "trên N giao dịch kiểm thử" | Số cảnh báo của UI-D1 (tập kiểm thử) khác số dòng trong hàng đợi (dữ liệu người dùng nạp); để chung một câu là gây nhầm |
+| UI-01 | Trạng thái rỗng tách hai trường hợp: bảng `transactions` trống (ba cách nạp) và bộ lọc không khớp | Hỏi thêm `GET /transactions?min_score=0&page_size=1` khi danh sách rỗng |
+| UI-01 | Tải lại giữ bảng cũ mờ đi; khung xương chỉ ở lần tải đầu | Không nháy bố cục mỗi lần đổi trang hay đổi ngưỡng |
+| UI-01 | "Chọn mẫu có sẵn" là hộp thoại: chấm từng mẫu hoặc cả nhóm; mỗi mẫu một lời gọi `POST /score` kèm `sample_id` | `/score/batch` không giữ được nhãn thật của mẫu, mà UI-02 cần nhãn để đối chiếu (FR-44) |
+| UI-02 | Ngăn kéo là `<dialog>` mở bằng `showModal()` | Trình duyệt tự bẫy trọng tâm và bắt `Esc`; mã chỉ còn phải trả trọng tâm về dòng cũ |
+| UI-02 | Thác nước SHAP ở **thang log-odds**, dựng bằng bảng HTML; có dòng "N đặc trưng còn lại" (`remaining_shap`) và vạch ngưỡng quy về log-odds | Chỉ ở thang log-odds các đóng góp mới cộng được (05 §7). Bảng thật đọc được bằng trình đọc màn hình, không cần bảng thay thế |
+| UI-02 | Danh sách yếu tố dương có thể ngắn hơn 5, kèm một câu giải thích | 77% giao dịch kiểm thử có ít hơn 5 đặc trưng SHAP dương (05 §7) |
+| UI-02 | Giao dịch đã có kết luận từ trước thì nhãn thật hiện ngay khi mở | Người dùng đã quyết định rồi; kèm "khớp / khác kết luận của bạn" (FR-44) |
+| UI-02 | `F`/`A` không có tác dụng khi đang gõ ghi chú hay khi giữ Ctrl/Alt | `Ctrl+F` vẫn là tìm kiếm của trình duyệt |
+| UI-03 | Thanh trượt theo **thang log10**, 0,0001 → 0,999. `←`/`→` ±0,01 đơn vị log (≈ 2,3%), `PgUp`/`PgDn` ±0,1 (≈ 26%), `Home`/`End` hai đầu; thêm ô nhập số chính xác | Với mô hình thật, τ\* = 0,0232 nằm ở 2% đầu một thanh tuyến tính, và bước 0,001 lớn gấp đôi ngưỡng "recall ≥ 90%" (0,00054). Thang log trải đều vùng quyết định 0,0005…0,97 và khớp trục của đường cong chi phí |
+| UI-03 | Mọi chi phí quy ra **EUR/ngày trên toàn luồng** (chia tỷ lệ mẫu và số ngày, như `alerts_per_day`); ô chi phí ghi thêm con số trên tập kiểm thử | Đường cong đo trên out-of-fold (80% dữ liệu), ô số đo trên tập kiểm thử (20%): quy về mỗi ngày thì hai nguồn cùng thang. Con số tập kiểm thử (2.389,78 EUR tại τ\*) là con số của báo cáo |
+| UI-03 | Trục tung đường cong cắt ở khoảng 2,5 lần cực tiểu | Hai đầu vọt tới khoảng 30.000 EUR/ngày và đè bẹp vùng đáy chữ U — chỗ duy nhất có quyết định |
+| UI-03 | Mỗi ô số kèm chênh lệch so với ngưỡng đang áp dụng | Kịch bản bảo vệ 0,5 → τ\* đọc được ngay trên màn hình |
+| UI-03 | Ràng buộc vận hành (FR-33) nhập ở đây; `constraint_binding` hiện bằng câu chữ | Trả lời "bị giới hạn bởi ngân sách thẩm định hay bởi chính chi phí" (05 §3, API-12) |
+| UI-03 | Màn hình tự ghi thời gian tính và thời gian tới khi vẽ xong khung hình | Bằng chứng AC-A3 ngay trên màn hình, không cần mở DevTools |
+| UI-04 | Thêm đường PR và ROC của mô hình xuất trên tập kiểm thử | FR-42 đòi đường ROC; §6 không liệt kê |
+| UI-04 | Khoảng tin cậy dạng thanh sai số HTML: bốn chỉ số chính, và PR-AUC của bốn mô hình ở bảng đối chiếu | Thấy ngay khoảng của hồi quy logistic và cây quyết định chồng lên nhau |
+| UI-05 | Trình duyệt tự đếm (bỏ trùng theo mã giao dịch); tiếp tục phát với `start` = `sim_seconds` cuối cùng đã nhận | `stats` của máy chủ đếm lại từ 0 mỗi kết nối; giây cuối được phát lại khi tiếp tục nên phải bỏ trùng |
+| UI-05 | Mất kết nối thì đóng `EventSource` và tự nối lại sau 3 giây từ chỗ dừng | Để mặc định, `EventSource` tự nối lại với URL cũ, tức phát lại từ `start` ban đầu |
+| UI-05 | Sự kiện gộp theo khung hình (`requestAnimationFrame`); tốc độ 9 nấc từ 1 tới 3.600 lần | Ở 3.600 lần có hơn nghìn giao dịch mỗi giây — vẽ từng sự kiện là treo trang |
+| UI-05 | Bấm một cảnh báo để mở chi tiết; mã `RP-…` chưa ghi xong thì ngăn kéo báo và cho thử lại | Phát lại ghi theo mẻ 100 dòng (05 §7), nên giao dịch vừa phát có thể chưa có trong CSDL vài giây |
+
+## 13. Bản Next.js (`frontend/`)
+
+Viết sau bản `web/`, theo nhánh "Next.js + React + Tailwind + Recharts" mà [03 §6.2](03-thiet-ke-kien-truc.md)
+để ngỏ. Hai bản cùng gọi một API, cùng quy tắc định dạng số, cùng các quyết định ở §12; bản `web/`
+giữ lại làm phương án dự phòng cho buổi bảo vệ. Cách chạy: [frontend/README.md](../frontend/README.md)
+và [lenh-chay-giai-doan-8 §6](lenh-chay-giai-doan-8.md).
+
+| Điểm | Bản `web/` (Alpine.js) | Bản `frontend/` (Next.js) |
+|---|---|---|
+| Điều hướng | `#/queue`, `#/threshold`… trong một trang | route thật `/`, `/threshold/`, `/performance/`, `/replay/`, xuất tĩnh ra `out/` |
+| Giữ trạng thái khi đổi màn hình | cả 4 màn hình luôn nằm trong DOM (`x-show`) | trạng thái cần giữ nằm ở context của layout gốc: `ThresholdDraftContext` (vị trí thanh trượt, tham số chi phí), `ReplayContext` (luồng SSE chạy tiếp khi sang Hàng đợi) |
+| UI-D1 | `web/threshold.js` (UMD) | `frontend/src/lib/threshold.mjs` (ES module). TC-12 đối chiếu **cả hai** với `src/threshold.py` |
+| Mảng điểm tập kiểm thử | ngoài trạng thái Alpine (Proxy làm chậm) | trong state React — so sánh theo tham chiếu nên kích thước không ảnh hưởng |
+| Biểu đồ | Chart.js (canvas) | Recharts (SVG); PR/ROC không có tooltip, số liệu nằm ở bảng ngay dưới |
+| Biểu đồ vẽ lại khi kéo | trong `requestAnimationFrame` | ở mức ưu tiên thấp (`useDeferredValue`): ô số cập nhật trước, biểu đồ theo sau |
+| AC-A3 (lâu nhất trên 21 lần kéo) | 20 ms | 39 ms |
+| Kiểm tra tĩnh | — | `tsc --noEmit`, ESLint gồm các luật React Compiler, không tắt luật nào |
+
+Bẫy riêng của bản này (Next.js 16.3 trên Windows ghi sai tên tệp tải trước khi xuất tĩnh; React
+Compiler hiểu nhầm trường `threshold.current` là `ref.current`): [lenh-chay-giai-doan-8 §5](lenh-chay-giai-doan-8.md).

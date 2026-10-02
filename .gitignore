@@ -5,6 +5,7 @@ data/*.zip
 # Model artifacts
 models/*.pkl
 models/*.joblib
+models/*.npz
 
 # Python
 __pycache__/

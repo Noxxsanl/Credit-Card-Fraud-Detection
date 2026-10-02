@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fraud Review Console</title>
+  <meta name="description" content="Bảng điều khiển thẩm định gian lận thẻ tín dụng — đồ án phát hiện gian lận">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231c5cab'/%3E%3Cpath d='M16 7 L25 24 H7 Z' fill='none' stroke='white' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <!-- Thứ tự nạp: cấu hình → UI-D1 → Chart.js → biểu đồ → trạng thái Alpine → Alpine (defer) -->
+  <script src="config.js"></script>
+  <script src="threshold.js"></script>
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="charts.js"></script>
+  <script src="app.js"></script>
+  <script defer src="vendor/alpine.min.js"></script>
+</head>
+<body x-data x-init="$store.app.boot()">
+  <a class="skip-link" href="#main">Bỏ qua, tới nội dung chính</a>
+
+  <!-- ================================================================== -->
+  <!-- Thanh bên — 4 màn hình; chân luôn hiện model_version (NFR-11)       -->
+  <!-- ================================================================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7"/><path d="M16 7 L25 24 H7 Z"/></svg>
+      <span>Fraud<br>Console</span>
+    </div>
+    <nav aria-label="Màn hình">
+      <ul class="nav">
+        <li>
+          <a href="#/queue" :aria-current="$store.app.route === 'queue' ? 'page' : false">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h9"/></svg>Hàng đợi
+          </a>
+        </li>
+        <li>
+          <a href="#/threshold" :aria-current="$store.app.route === 'threshold' ? 'page' : false">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 10h14"/><circle cx="8" cy="10" r="2.6"/></svg>Ngưỡng
+          </a>
+        </li>
+        <li>
+          <a href="#/performance" :aria-current="$store.app.route === 'performance' ? 'page' : false">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 17V3M3 17h14M6 13l3.5-4 3 2.5L17 5"/></svg>Hiệu năng
+          </a>
+        </li>
+        <li>
+          <a href="#/replay" :aria-current="$store.app.route === 'replay' ? 'page' : false">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M6 4.5v11l9-5.5z"/></svg>Phát lại
+          </a>
+        </li>
+      </ul>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="foot-label">Mô hình đang phục vụ</div>
+      <div class="mono foot-model" x-text="$store.app.modelVersion || '—'"></div>
+      <div x-text="'Huấn luyện ' + fmt.date($store.app.trainedAt)"></div>
+    </div>
+  </aside>
+
+  <div class="main-col">
+    <!-- ================================================================ -->
+    <!-- Thanh trên — ngưỡng luôn hiển thị ở mọi màn hình (UI-D4)          -->
+    <!-- ================================================================ -->
+    <header class="topbar">
+      <h1 x-text="$store.app.title">Fraud Review Console</h1>
+      <div class="topbar-right">
+        <div class="health" role="status"
+             :class="$store.app.health.state === 'ok' ? 'health-ok' : ($store.app.health.state === 'loading' ? 'health-loading' : 'health-error')">
+          <span class="health-dot" aria-hidden="true"></span>
+          <span x-text="$store.app.health.state === 'ok' ? 'API và CSDL hoạt động'
+                       : $store.app.health.state === 'loading' ? 'Đang kết nối API…'
+                       : $store.app.health.code === 'DATABASE_UNAVAILABLE' ? 'Mất kết nối CSDL'
+                       : $store.app.health.code === 'MODEL_NOT_LOADED' ? 'Chưa nạp mô hình'
+                       : 'Không kết nối được API'"></span>
+        </div>
+        <div class="threshold-pill">
+          <span class="pill-label">Ngưỡng</span>
+          <strong class="figure" x-text="fmt.tau($store.app.tau)">—</strong>
+          <span class="pill-source" x-show="$store.app.threshold"
+                x-text="$store.app.threshold && $store.app.threshold.source === 'user' ? 'đã đặt' : 'τ* mặc định'"></span>
+          <a class="btn btn-small" href="#/threshold" x-show="$store.app.route !== 'threshold'">Đổi</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="banners">
+      <div class="banner banner-error" role="alert" x-cloak x-show="$store.app.health.state === 'error'">
+        <div>
+          <strong x-text="$store.app.health.message"></strong>
+          <p x-show="$store.app.health.code === 'NETWORK'">
+            Chạy API trong một cửa sổ khác: <code>.\.venv\Scripts\python.exe -m uvicorn api.main:app --port 8000</code>
+            — địa chỉ đang gọi: <code x-text="$store.app.apiBase"></code>
+          </p>
+          <p x-show="$store.app.health.code === 'DATABASE_UNAVAILABLE'">
+            PostgreSQL không trả lời: <code>docker compose up -d db</code>. Màn hình Hiệu năng và thanh trượt ngưỡng vẫn dùng được.
+          </p>
+          <p x-show="$store.app.health.code === 'MODEL_NOT_LOADED'">
+            Thiếu hoặc hỏng hiện vật — chạy <code>notebooks/08_export_artifacts.ipynb</code>.
+            <span x-text="$store.app.health.reason || ''"></span>
+          </p>
+        </div>
+        <button class="btn btn-small" @click="$store.app.checkHealth()">Thử lại</button>
+      </div>
+      <div class="banner banner-warn" role="alert" x-cloak x-show="$store.app.modelChanged">
+        <div><strong>Mô hình phía API vừa đổi.</strong> Tải lại trang để mọi con số dùng mô hình mới.</div>
+        <button class="btn btn-small" @click="location.reload()">Tải lại</button>
+      </div>
+      <div class="banner banner-warn" role="alert" x-cloak x-show="$store.app.scoresError && $store.app.health.state === 'ok'">
+        <div><strong>Chưa tải được điểm của tập kiểm thử:</strong> <span x-text="$store.app.scoresError"></span></div>
+        <button class="btn btn-small" @click="$store.app.loadScores()">Thử lại</button>
+      </div>
+    </div>
+
+    <main id="main" tabindex="-1">
+
+      <!-- ============================================================== -->
+      <!-- UI-01 — Hàng đợi thẩm định (07 §3)                              -->
+      <!-- ============================================================== -->
+      <section class="screen" x-data="queueScreen" x-show="$store.app.route === 'queue'" aria-label="Hàng đợi thẩm định">
+
+        <p class="summary-line" x-show="$store.app.summary" x-cloak>
+          <template x-if="$store.app.summary">
+            <span>
+              Với ngưỡng này, trên <span x-text="fmt.int($store.app.nTest)"></span> giao dịch kiểm thử:
+              <strong x-text="fmt.int($store.app.summary.alerts) + ' cảnh báo'"></strong>
+              (≈ <span x-text="fmt.int($store.app.summary.alerts_per_day)"></span>/ngày)
+              · ước tính bắt được
+              <strong x-text="fmt.pct($store.app.summary.recall, 0) + ' gian lận'"></strong>
+              (<span x-text="$store.app.summary.tp + '/' + ($store.app.summary.tp + $store.app.summary.fn)"></span>)
+            </span>
+          </template>
+        </p>
+
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <button type="button" class="btn" @click="pickFile()" :disabled="uploading">
+              <span x-text="uploading ? 'Đang chấm điểm…' : 'Tải CSV'"></span>
+            </button>
+            <input type="file" accept=".csv,text/csv" class="visually-hidden" tabindex="-1" aria-hidden="true"
+                   x-ref="file" @change="upload($event)">
+            <button type="button" class="btn" @click="openSamples()">Chọn mẫu có sẵn</button>
+            <a class="btn" href="#/replay">▶ Phát lại ngày 2</a>
+          </div>
+          <div class="segmented" role="group" aria-label="Lọc theo trạng thái thẩm định">
+            <template x-for="opt in [['all', 'Tất cả'], ['pending', 'Chờ xử lý'], ['confirmed_fraud', 'Xác nhận gian lận'], ['false_alarm', 'Báo động sai']]" :key="opt[0]">
+              <button type="button" :aria-pressed="status === opt[0] ? 'true' : 'false'" @click="setStatus(opt[0])" x-text="opt[1]"></button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Kết quả tải CSV (API-04) -->
+        <div class="notice" role="status" x-cloak x-show="uploading">
+          Đang tải lên và chấm điểm tệp — 10.000 dòng mất khoảng 2 giây (AC-A1: dưới 30 giây).
+        </div>
+        <template x-if="uploadError">
+          <div class="card result-card result-error" role="alert">
+            <div class="result-head">
+              <strong>Không chấm được tệp: <span x-text="uploadError.message"></span></strong>
+              <button type="button" class="btn btn-ghost btn-small" @click="uploadError = null" aria-label="Đóng thông báo">✕</button>
+            </div>
+            <p x-show="uploadError.details && uploadError.details.missing">
+              Thiếu cột: <code x-text="uploadError.details && uploadError.details.missing ? uploadError.details.missing.join(', ') : ''"></code>.
+              Tệp cần đủ 30 cột Time, V1…V28, Amount; cột Class nếu có sẽ thành nhãn thật.
+            </p>
+          </div>
+        </template>
+        <template x-if="uploadResult">
+          <div class="card result-card" role="status">
+            <div class="result-head">
+              <strong>Đã chấm tệp <span x-text="uploadResult.fileName"></span></strong>
+              <button type="button" class="btn btn-ghost btn-small" @click="uploadResult = null" aria-label="Đóng kết quả tải tệp">✕</button>
+            </div>
+            <dl class="kv">
+              <div><dt>Dòng đọc được</dt><dd x-text="fmt.int(uploadResult.rows_read)"></dd></div>
+              <div><dt>Đã chấm và lưu</dt><dd x-text="fmt.int(uploadResult.count)"></dd></div>
+              <div><dt>Vượt ngưỡng</dt><dd x-text="fmt.int(uploadResult.alerts)"></dd></div>
+              <div><dt>Dòng bị loại</dt><dd x-text="fmt.int(uploadResult.rows_rejected)"></dd></div>
+              <div><dt>Thời gian phía máy chủ</dt><dd x-text="fmt.num(uploadResult.elapsed_ms / 1000, 1) + ' giây'"></dd></div>
+              <template x-if="uploadResult.actual_metrics">
+                <div><dt>Trên nhãn của tệp</dt>
+                  <dd x-text="'recall ' + fmt.pct(uploadResult.actual_metrics.recall) + ' · precision ' + fmt.pct(uploadResult.actual_metrics.precision) + ' · PR-AUC ' + fmt.num(uploadResult.actual_metrics.pr_auc, 3)"></dd>
+                </div>
+              </template>
+            </dl>
+            <template x-if="uploadResult.rejection_reasons.length">
+              <details>
+                <summary x-text="'Lý do loại ' + uploadResult.rejection_reasons.length + ' dòng đầu tiên'"></summary>
+                <ul class="reasons">
+                  <template x-for="r in uploadResult.rejection_reasons.slice(0, 20)" :key="r.row">
+                    <li><span class="mono" x-text="'Dòng ' + r.row"></span>: <span x-text="r.reason"></span></li>
+                  </template>
+                </ul>
+              </details>
+            </template>
+            <button type="button" class="btn btn-small" @click="showBatch(uploadResult.batch_id)">Chỉ xem lô này</button>
+          </div>
+        </template>
+
+        <div class="queue-meta">
+          <p class="muted" x-show="loaded && !error" x-text="fmt.int(total) + ' giao dịch vượt ngưỡng khớp bộ lọc'"></p>
+          <template x-if="batchId">
+            <span class="chip">Lô <span class="mono" x-text="batchId"></span>
+              <button type="button" @click="clearBatch()" aria-label="Bỏ lọc theo lô">✕</button>
+            </span>
+          </template>
+          <button type="button" class="btn btn-ghost btn-small" @click="load()" :disabled="loading">Làm mới</button>
+        </div>
+
+        <!-- Đang tải lần đầu: khung xương 5 dòng, không spinner toàn trang -->
+        <div class="table-wrap" x-show="!loaded" aria-hidden="true">
+          <table class="data-table">
+            <tbody>
+              <template x-for="n in 5" :key="n">
+                <tr class="skeleton-row"><td colspan="8"><span class="skeleton"></span></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <template x-if="error">
+          <div class="empty" role="alert">
+            <p><strong>Không tải được hàng đợi.</strong> <span x-text="error"></span></p>
+            <button type="button" class="btn" @click="load()">Thử lại</button>
+          </div>
+        </template>
+
+        <div class="table-wrap" x-show="loaded && !error && items.length" :class="{ 'is-refreshing': loading }">
+          <table class="data-table queue-table">
+            <caption class="visually-hidden">
+              Giao dịch có điểm rủi ro từ ngưỡng hiện hành trở lên. Dùng mũi tên lên, xuống để di chuyển giữa các dòng, Enter để mở chi tiết.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" :aria-sort="ariaSort('risk_score')">
+                  <button type="button" class="th-sort" @click="setSort('risk_score')">Rủi ro <span aria-hidden="true" x-text="sortArrow('risk_score')"></span></button>
+                </th>
+                <th scope="col">Mã GD</th>
+                <th scope="col" class="num" :aria-sort="ariaSort('amount')">
+                  <button type="button" class="th-sort" @click="setSort('amount')">Số tiền (EUR) <span aria-hidden="true" x-text="sortArrow('amount')"></span></button>
+                </th>
+                <th scope="col">Giờ</th>
+                <th scope="col">Đề xuất</th>
+                <th scope="col">Trạng thái</th>
+                <th scope="col">Nguồn</th>
+                <th scope="col"><span class="visually-hidden">Mở chi tiết</span></th>
+              </tr>
+            </thead>
+            <tbody x-ref="tbody">
+              <template x-for="(item, i) in items" :key="item.id">
+                <tr class="row-link" :data-row="i" :tabindex="i === activeIndex ? 0 : -1"
+                    @click="open(item, $el)" @keydown="onRowKey($event, i)" @focus="activeIndex = i">
+                  <td>
+                    <span class="risk" :class="'risk-' + risk(item).key">
+                      <span class="risk-shape" aria-hidden="true" x-text="risk(item).shape"></span>
+                      <span x-text="fmt.score(item.risk_score)"></span>
+                      <span class="visually-hidden" x-text="', mức ' + risk(item).text"></span>
+                    </span>
+                  </td>
+                  <td class="mono" x-text="item.id"></td>
+                  <td class="num" x-text="fmt.num(item.amount)"></td>
+                  <td x-text="fmt.hour(item.hour)"></td>
+                  <td><span class="badge" :class="'badge-' + item.decision" x-text="LABELS.decision[item.decision]"></span></td>
+                  <td><span class="status" :class="'status-' + statusOf(item)" x-text="LABELS.review[statusOf(item)]"></span></td>
+                  <td class="muted" x-text="LABELS.source[item.source]"></td>
+                  <td class="chev"><span aria-hidden="true">▸</span><span class="visually-hidden">Mở chi tiết</span></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+
+        <nav class="pager" aria-label="Phân trang hàng đợi" x-show="loaded && !error && pages > 1">
+          <button type="button" @click="goto(page - 1)" :disabled="page === 1" aria-label="Trang trước">‹</button>
+          <template x-for="p in pageItems" :key="p">
+            <span class="pager-item">
+              <template x-if="typeof p === 'number'">
+                <button type="button" @click="goto(p)" :aria-current="p === page ? 'page' : false"
+                        :aria-label="'Trang ' + p" x-text="p"></button>
+              </template>
+              <template x-if="typeof p !== 'number'"><span class="pager-gap" aria-hidden="true">…</span></template>
+            </span>
+          </template>
+          <button type="button" @click="goto(page + 1)" :disabled="page === pages" aria-label="Trang sau">›</button>
+        </nav>
+
+        <!-- Trạng thái rỗng: hướng dẫn ba cách nạp dữ liệu (T-52) -->
+        <template x-if="loaded && !error && total === 0 && hasAnyData === false">
+          <div class="empty empty-onboarding">
+            <h2>Chưa có giao dịch nào để thẩm định</h2>
+            <p class="muted">Hàng đợi đọc từ cơ sở dữ liệu. Nạp dữ liệu bằng một trong ba cách:</p>
+            <ol class="ways">
+              <li>
+                <strong>Tải tệp CSV</strong>
+                <span>Đủ 30 cột <code>Time</code>, <code>V1</code>…<code>V28</code>, <code>Amount</code>; cột <code>Class</code> nếu có sẽ thành nhãn thật. Tối đa 100 MB.</span>
+                <button type="button" class="btn" @click="pickFile()">Chọn tệp CSV</button>
+              </li>
+              <li>
+                <strong>Chọn mẫu có sẵn</strong>
+                <span>200 giao dịch của tập kiểm thử, chia bốn nhóm: gian lận dễ/khó, hợp lệ dễ/khó.</span>
+                <button type="button" class="btn" @click="openSamples()">Mở thư viện mẫu</button>
+              </li>
+              <li>
+                <strong>Phát lại ngày 2</strong>
+                <span>Dòng giao dịch chảy theo thời gian mô phỏng; giao dịch vượt ngưỡng rơi vào hàng đợi.</span>
+                <a class="btn" href="#/replay">Mở chế độ phát lại</a>
+              </li>
+            </ol>
+          </div>
+        </template>
+        <template x-if="loaded && !error && total === 0 && hasAnyData">
+          <div class="empty">
+            <p><strong>Không có giao dịch vượt ngưỡng nào khớp bộ lọc.</strong></p>
+            <p class="muted">Hàng đợi chỉ gồm giao dịch có điểm rủi ro từ ngưỡng hiện hành trở lên. Đổi bộ lọc trạng thái, bỏ lọc theo lô, hoặc hạ ngưỡng ở màn hình Ngưỡng.</p>
+          </div>
+        </template>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- UI-03 — Cấu hình ngưỡng (07 §5)                                  -->
+      <!-- ============================================================== -->
+      <section class="screen" x-data="thresholdScreen" x-show="$store.app.route === 'threshold'" x-cloak aria-label="Cấu hình ngưỡng">
+        <div class="empty" x-show="!initialized">
+          <p x-show="!$store.app.scoresError && !$store.app.thresholdError">Đang nạp điểm của tập kiểm thử…</p>
+          <p x-show="$store.app.thresholdError" x-text="'Không đọc được ngưỡng hiện hành: ' + $store.app.thresholdError"></p>
+        </div>
+
+        <div x-show="initialized">
+          <div class="card slider-card">
+            <div class="slider-head">
+              <div>
+                <label for="tau-slider" class="eyebrow">Ngưỡng đang xem</label>
+                <div class="tau-big">
+                  <span class="figure" x-text="fmt.tau(tau)"></span>
+                  <input id="tau-input" class="tau-input mono" type="text" inputmode="decimal" autocomplete="off"
+                         :value="tauInputValue" @change="onTauInput($event)" aria-label="Nhập ngưỡng chính xác, trong khoảng 0 đến 1">
+                </div>
+              </div>
+              <div class="slider-actions">
+                <button type="button" class="btn" @click="resetToDefault()"
+                        :disabled="!$store.app.threshold || tau === $store.app.threshold.default">Về τ*</button>
+                <button type="button" class="btn btn-primary" @click="apply()" :disabled="!dirty || applying || !costs.valid">
+                  <span x-text="applying ? 'Đang áp dụng…' : 'Áp dụng ngưỡng này'"></span>
+                </button>
+              </div>
+            </div>
+            <input id="tau-slider" class="tau-slider" type="range" :min="logMin" :max="logMax" step="0.001"
+                   :value="sliderValue" @input="onSlider($event)" @keydown="onSliderKey($event)"
+                   :aria-valuetext="'Ngưỡng ' + fmt.tau(tau)">
+            <div class="slider-scale" aria-hidden="true">
+              <template x-for="v in [0.0001, 0.001, 0.01, 0.1, 1]" :key="v">
+                <span class="scale-tick" :style="`left: ${(Math.log10(v) - logMin) / (logMax - logMin) * 100}%`" x-text="fmt.tauTick(v)"></span>
+              </template>
+              <template x-if="$store.app.threshold">
+                <span class="scale-mark" :style="`left: ${(Math.log10($store.app.threshold.default) - logMin) / (logMax - logMin) * 100}%`">▲ τ*</span>
+              </template>
+            </div>
+            <p class="hint">
+              Thanh trượt theo thang log — vùng quyết định trải từ 0,0005 tới 0,97.
+              Bàn phím: ← → bước nhỏ, PgUp/PgDn bước lớn, Home/End hai đầu; hoặc gõ số vào ô bên cạnh.
+              Mọi con số dưới đây tính ngay trong trình duyệt:
+              <span x-text="calcMs === null ? '—' : fmt.num(calcMs, 2) + ' ms'"></span> tính toán,
+              <span x-text="latencyMs === null ? '—' : fmt.num(latencyMs, 0) + ' ms'"></span> tới lúc vẽ xong (yêu cầu dưới 200 ms).
+            </p>
+          </div>
+
+          <div class="tiles" aria-live="polite">
+            <div class="tile">
+              <div class="tile-label">Cảnh báo mỗi ngày</div>
+              <div class="tile-value" x-text="fmt.int(m?.alerts_per_day)"></div>
+              <div class="tile-sub"><span x-text="fmt.int(m?.alerts)"></span> cảnh báo trên tập kiểm thử</div>
+              <template x-if="deltaInfo('alerts_per_day')">
+                <div class="tile-delta" x-text="deltaInfo('alerts_per_day').text"></div>
+              </template>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Gian lận bắt được</div>
+              <div class="tile-value"><span x-text="m?.tp"></span><span class="tile-den"> / <span x-text="m ? m.tp + m.fn : '—'"></span></span></div>
+              <div class="tile-sub">recall <span x-text="fmt.pct(m?.recall)"></span></div>
+              <template x-if="deltaInfo('tp', { goodIf: 'up' })">
+                <div class="tile-delta" :class="deltaInfo('tp', { goodIf: 'up' }).cls" x-text="deltaInfo('tp', { goodIf: 'up' }).text"></div>
+              </template>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Precision</div>
+              <div class="tile-value" x-text="fmt.num(m?.precision, 2)"></div>
+              <div class="tile-sub"><span x-text="fmt.int(m?.fp)"></span> cảnh báo giả · F1 <span x-text="fmt.num(m?.f1, 2)"></span></div>
+              <template x-if="deltaInfo('fp', { goodIf: 'down' })">
+                <div class="tile-delta" :class="deltaInfo('fp', { goodIf: 'down' }).cls" x-text="deltaInfo('fp', { goodIf: 'down' }).text"></div>
+              </template>
+            </div>
+            <div class="tile">
+              <div class="tile-label">Chi phí mỗi ngày</div>
+              <div class="tile-value"><span x-text="fmt.int(perDay(m?.expected_cost))"></span> <span class="tile-unit">EUR</span></div>
+              <div class="tile-sub">tập kiểm thử: <span x-text="fmt.eur(m?.expected_cost)"></span></div>
+              <template x-if="deltaInfo('expected_cost', { goodIf: 'down', perDay: true, unit: ' EUR' })">
+                <div class="tile-delta" :class="deltaInfo('expected_cost', { goodIf: 'down', perDay: true, unit: ' EUR' }).cls"
+                     x-text="deltaInfo('expected_cost', { goodIf: 'down', perDay: true, unit: ' EUR' }).text"></div>
+              </template>
+            </div>
+          </div>
+
+          <div class="grid-2 grid-threshold">
+            <form class="card" @submit.prevent novalidate>
+              <h2 class="card-title">Tham số chi phí</h2>
+              <p class="card-sub">Đổi tham số làm dịch chuyển ngưỡng tối ưu (FR-32). Máy chủ tính lại sau 300 ms kể từ lần gõ cuối.</p>
+              <div class="field">
+                <label for="cost-fn">Chi phí bỏ lọt 1 gian lận</label>
+                <div class="input-unit"><input id="cost-fn" type="number" min="0.01" step="0.01" x-model="costFnInput"><span>EUR</span></div>
+              </div>
+              <div class="field">
+                <label for="cost-fp">Chi phí 1 lần thẩm định</label>
+                <div class="input-unit"><input id="cost-fp" type="number" min="0" step="0.01" x-model="costFpInput"><span>EUR</span></div>
+              </div>
+              <p class="field-error" role="alert" x-show="!costs.valid">
+                Chi phí bỏ lọt phải lớn hơn 0; chi phí thẩm định không âm.
+              </p>
+
+              <div class="field">
+                <label for="constraint-type">Ràng buộc vận hành (FR-33)</label>
+                <select id="constraint-type" x-model="constraintType">
+                  <option value="none">Không ràng buộc</option>
+                  <option value="min_recall">Recall tối thiểu</option>
+                  <option value="max_alerts_per_day">Số cảnh báo tối đa mỗi ngày</option>
+                </select>
+              </div>
+              <div class="field" x-show="constraintType !== 'none'">
+                <label for="constraint-value" x-text="constraintType === 'min_recall' ? 'Recall tối thiểu' : 'Ngân sách thẩm định'"></label>
+                <div class="input-unit">
+                  <input id="constraint-value" type="number" min="0" step="any" x-model="constraintValueInput"
+                         :placeholder="constraintType === 'min_recall' ? '90' : '200'">
+                  <span x-text="constraintType === 'min_recall' ? '%' : 'cảnh báo/ngày'"></span>
+                </div>
+              </div>
+              <p class="field-error" role="alert" x-show="!constraint.valid">
+                Nhập giá trị ràng buộc: recall trong (0, 100]%, ngân sách lớn hơn 0.
+              </p>
+
+              <div class="opt-result" aria-live="polite">
+                <p class="muted" x-show="optLoading">Đang tính ngưỡng tối ưu…</p>
+                <p class="field-error" x-show="optError" x-text="optError"></p>
+                <template x-if="opt">
+                  <div>
+                    <p class="opt-main">
+                      Ngưỡng tối ưu: <strong class="mono" x-text="fmt.tau(opt.optimal_threshold)"></strong>
+                      <button type="button" class="btn btn-small" @click="useOptimal()" :disabled="tau === opt.optimal_threshold">Xem ngưỡng này</button>
+                    </p>
+                    <p x-show="constraintType !== 'none' && opt.constraint_binding">
+                      <strong>Ràng buộc đang chặn nghiệm.</strong> Không có nó, ngưỡng tối ưu là
+                      <span class="mono" x-text="fmt.tau(opt.unconstrained_threshold)"></span> — bạn đang bị giới hạn bởi ràng buộc vận hành, không phải bởi chi phí.
+                    </p>
+                    <p x-show="constraintType !== 'none' && !opt.constraint_binding">
+                      Ràng buộc không chặn: nghiệm cực tiểu chi phí đã thỏa ràng buộc.
+                    </p>
+                    <p class="field-error" x-show="!opt.constraint_satisfied">Không ngưỡng nào đạt ràng buộc — đã lấy ngưỡng gần đạt nhất.</p>
+                    <p class="muted small">
+                      Chọn trên out-of-fold của tập huấn luyện (ML-08). Đo lại trên tập kiểm thử: bắt
+                      <span x-text="opt.metrics_at_optimal.tp + '/' + (opt.metrics_at_optimal.tp + opt.metrics_at_optimal.fn)"></span> gian lận,
+                      <span x-text="fmt.int(opt.metrics_at_optimal.alerts_per_day)"></span> cảnh báo/ngày.
+                    </p>
+                  </div>
+                </template>
+              </div>
+            </form>
+
+            <div class="card chart-card">
+              <h2 class="card-title">Tổng chi phí theo ngưỡng</h2>
+              <p class="card-sub">
+                Đường cong: out-of-fold của tập huấn luyện, nơi ngưỡng được chọn. Các ô số phía trên: tập kiểm thử.
+                Cả hai quy ra EUR mỗi ngày trên toàn luồng giao dịch.
+              </p>
+              <div class="chart-box chart-cost" :class="{ 'is-refreshing': optLoading }">
+                <canvas x-ref="costCanvas" role="img" :aria-label="curveSummary"></canvas>
+              </div>
+              <ul class="line-keys">
+                <li><span class="key key-ink" aria-hidden="true"></span>Ngưỡng đang xem</li>
+                <li><span class="key key-series-2" aria-hidden="true"></span>Ngưỡng tối ưu theo tham số đang nhập</li>
+                <li><span class="key key-series-1" aria-hidden="true"></span>Chi phí ước tính</li>
+              </ul>
+            </div>
+          </div>
+
+          <fieldset class="card presets">
+            <legend class="card-title">Ngưỡng gợi ý sẵn</legend>
+            <p class="card-sub">Mỗi ngưỡng được chọn trên out-of-fold; số bên phải đo trên tập kiểm thử với tham số chi phí đang nhập (FR-34).</p>
+            <div class="preset-list">
+              <template x-for="p in presets" :key="p.key">
+                <label class="preset" :class="{ 'is-selected': tau === p.value }">
+                  <input type="radio" name="preset" :value="p.key" :checked="tau === p.value" @change="setTau(p.value)">
+                  <span class="preset-tau figure" x-text="fmt.tau(p.value)"></span>
+                  <span class="preset-text"><strong x-text="p.label"></strong><small x-text="p.hint"></small></span>
+                  <span class="preset-stats">
+                    <span>bắt <strong x-text="p.tp + '/' + p.nPos"></strong></span>
+                    <span><strong x-text="fmt.int(p.alertsPerDay)"></strong> cảnh báo/ngày</span>
+                    <span><strong x-text="fmt.int(p.costPerDay)"></strong> EUR/ngày</span>
+                  </span>
+                </label>
+              </template>
+            </div>
+          </fieldset>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- UI-04 — Hiệu năng mô hình (07 §6)                                -->
+      <!-- ============================================================== -->
+      <section class="screen" x-data="performanceScreen" x-show="$store.app.route === 'performance'" x-cloak aria-label="Hiệu năng mô hình">
+        <div class="empty" x-show="!loaded">
+          <p x-show="loading">Đang tải metrics.json…</p>
+          <template x-if="error">
+            <div role="alert"><p x-text="'Không tải được chỉ số: ' + error"></p><button type="button" class="btn" @click="load()">Thử lại</button></div>
+          </template>
+        </div>
+
+        <div x-show="loaded">
+          <!-- Chỉ số chính kèm khoảng tin cậy bootstrap -->
+          <div class="tiles">
+            <template x-for="r in ciRows" :key="r.key">
+              <div class="tile">
+                <div class="tile-label" x-text="r.label"></div>
+                <div class="tile-value" x-text="fmt.num(r.value, 3)"></div>
+                <div class="tile-sub">KTC 95%: <span x-text="fmt.num(r.ci_low, 3) + ' – ' + fmt.num(r.ci_high, 3)"></span></div>
+              </div>
+            </template>
+          </div>
+          <p class="hint" x-show="s.dataset">
+            Tập kiểm thử: <span x-text="fmt.int(s.dataset?.n_test)"></span> giao dịch, <span x-text="fmt.int(s.dataset?.n_fraud_test)"></span> gian lận.
+            Khoảng tin cậy từ <span x-text="fmt.int(s.headline?.n_boot)"></span> lần bootstrap phân tầng — với chưa tới 100 mẫu dương, khoảng rất rộng.
+          </p>
+
+          <!-- 7 — Khoảng tin cậy dạng thanh sai số -->
+          <div class="grid-2">
+            <div class="card">
+              <h2 class="card-title">Khoảng tin cậy bootstrap 95%</h2>
+              <p class="card-sub">Mô hình xuất trên tập kiểm thử. Chấm là giá trị đo được, thanh là khoảng tin cậy.</p>
+              <div class="ci-chart" role="table" aria-label="Chỉ số kèm khoảng tin cậy">
+                <template x-for="r in ciRows" :key="r.key">
+                  <div class="ci-row" role="row">
+                    <span class="ci-label" role="rowheader" x-text="r.label"></span>
+                    <span class="ci-track" role="cell" :aria-label="fmt.num(r.value, 3) + ', từ ' + fmt.num(r.ci_low, 3) + ' tới ' + fmt.num(r.ci_high, 3)">
+                      <span class="ci-range" :style="`left:${bar(r.ci_low)};width:calc(${bar(r.ci_high)} - ${bar(r.ci_low)})`"></span>
+                      <span class="ci-dot" :style="`left:${bar(r.value)}`"></span>
+                    </span>
+                    <span class="ci-text mono" role="cell" x-text="fmt.num(r.ci_low, 2) + '–' + fmt.num(r.ci_high, 2)"></span>
+                  </div>
+                </template>
+                <div class="ci-row ci-axis" aria-hidden="true"><span></span><span class="ci-scale"><span style="left:0">0</span><span style="left:50%">0,5</span><span style="left:100%">1</span></span><span></span></div>
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="card-title">PR-AUC theo mô hình, kèm khoảng tin cậy</h2>
+              <p class="card-sub">Khoảng của hồi quy logistic và cây quyết định chồng lên nhau: 95 mẫu dương không đủ để tách chúng.</p>
+              <div class="ci-chart" role="table" aria-label="PR-AUC theo mô hình kèm khoảng tin cậy">
+                <template x-for="r in modelCiRows" :key="r.key">
+                  <div class="ci-row" role="row">
+                    <span class="ci-label" role="rowheader" x-text="r.label"></span>
+                    <span class="ci-track" role="cell" :aria-label="fmt.num(r.value, 3) + ', từ ' + fmt.num(r.ci_low, 3) + ' tới ' + fmt.num(r.ci_high, 3)">
+                      <span class="ci-range" :style="`left:${bar(r.ci_low)};width:calc(${bar(r.ci_high)} - ${bar(r.ci_low)})`"></span>
+                      <span class="ci-dot" :style="`left:${bar(r.value)}`"></span>
+                    </span>
+                    <span class="ci-text mono" role="cell" x-text="fmt.num(r.value, 3)"></span>
+                  </div>
+                </template>
+                <div class="ci-row ci-axis" aria-hidden="true"><span></span><span class="ci-scale"><span style="left:0">0</span><span style="left:50%">0,5</span><span style="left:100%">1</span></span><span></span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1 — Bảng 20 tổ hợp -->
+          <div class="card">
+            <h2 class="card-title">20 tổ hợp mô hình × chiến lược xử lý mất cân bằng</h2>
+            <p class="card-sub">Kiểm định chéo 5 fold phân tầng trên tập huấn luyện, sắp theo PR-AUC. Dòng tô đậm là mô hình đang phục vụ.</p>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col" class="num">#</th>
+                    <th scope="col">Mô hình</th>
+                    <th scope="col">Chiến lược</th>
+                    <th scope="col" class="num">PR-AUC</th>
+                    <th scope="col" class="num">± độ lệch chuẩn</th>
+                    <th scope="col" class="bar-col"><span class="visually-hidden">PR-AUC dạng thanh</span></th>
+                    <th scope="col" class="num">ROC-AUC</th>
+                    <th scope="col" class="num">Recall</th>
+                    <th scope="col" class="num">Precision</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="r in grid" :key="r.model + r.strategy">
+                    <tr :class="{ 'is-exported': r.exported }">
+                      <td class="num" x-text="r.rank"></td>
+                      <td><span x-text="LABELS.model[r.model] || r.model"></span><span class="tag" x-show="r.exported">đang phục vụ</span></td>
+                      <td x-text="LABELS.strategy[r.strategy] || r.strategy"></td>
+                      <td class="num" x-text="fmt.num(r.pr_auc_mean, 3)"></td>
+                      <td class="num muted" x-text="'± ' + fmt.num(r.pr_auc_std, 3)"></td>
+                      <td class="bar-col" aria-hidden="true"><span class="inline-bar" :style="`width:${bar(r.pr_auc_mean)}`"></span></td>
+                      <td class="num" x-text="fmt.num(r.roc_auc, 3)"></td>
+                      <td class="num" x-text="fmt.num(r.recall, 2)"></td>
+                      <td class="num" x-text="fmt.num(r.precision, 2)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <!-- 2 — Đường PR của 5 chiến lược -->
+            <div class="card">
+              <h2 class="card-title">Đường Precision–Recall của 5 chiến lược (XGBoost)</h2>
+              <p class="card-sub">Out-of-fold trên tập huấn luyện. Đường xám nằm ngang là đường cơ sở — tỷ lệ gian lận.</p>
+              <div class="chart-box chart-unit"><canvas x-ref="prStrategies" role="img"
+                   aria-label="Đường precision–recall của XGBoost với năm chiến lược xử lý mất cân bằng; giá trị PR-AUC ở bảng ngay dưới."></canvas></div>
+              <table class="data-table compact">
+                <caption class="visually-hidden">PR-AUC của từng chiến lược</caption>
+                <thead><tr><th scope="col">Chiến lược</th><th scope="col" class="num">PR-AUC</th><th scope="col" class="num">± độ lệch chuẩn</th></tr></thead>
+                <tbody>
+                  <template x-for="c in strategies" :key="c.strategy">
+                    <tr>
+                      <td><span class="key" :style="`background: var(${c.colorVar})`" aria-hidden="true"></span><span x-text="c.label"></span></td>
+                      <td class="num" x-text="fmt.num(c.pr_auc_mean, 3)"></td>
+                      <td class="num muted" x-text="'± ' + fmt.num(c.pr_auc_std, 3)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 3 — Ma trận nhầm lẫn tại ngưỡng hiện hành -->
+            <div class="card">
+              <h2 class="card-title">Ma trận nhầm lẫn tại ngưỡng hiện hành</h2>
+              <p class="card-sub">Tập kiểm thử, τ = <span class="mono" x-text="fmt.tau($store.app.tau)"></span>. Tính trong trình duyệt, cập nhật ngay khi áp dụng ngưỡng mới.</p>
+              <template x-if="confusion">
+                <table class="confusion">
+                  <thead>
+                    <tr><td></td><th scope="col">Cảnh báo</th><th scope="col">Cho qua</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">Thực tế gian lận</th>
+                      <td class="cm-good"><strong x-text="fmt.int(confusion.tp)"></strong><small>bắt được (TP)</small></td>
+                      <td class="cm-bad"><strong x-text="fmt.int(confusion.fn)"></strong><small>bỏ lọt (FN)</small></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Thực tế hợp lệ</th>
+                      <td class="cm-bad"><strong x-text="fmt.int(confusion.fp)"></strong><small>cảnh báo giả (FP)</small></td>
+                      <td class="cm-good"><strong x-text="fmt.int(confusion.tn)"></strong><small>cho qua đúng (TN)</small></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </template>
+              <p class="hint" x-show="confusion">
+                Recall <span x-text="fmt.pct(confusion?.recall)"></span> · precision <span x-text="fmt.pct(confusion?.precision)"></span>
+                · chi phí kỳ vọng <span x-text="fmt.eur(confusion?.expected_cost)"></span>.
+              </p>
+
+              <h3 class="card-title card-title-sm">Mô hình xuất trên tập kiểm thử</h3>
+              <div class="grid-2 grid-tight">
+                <figure class="mini-chart">
+                  <figcaption>Precision–Recall</figcaption>
+                  <div class="chart-box chart-mini"><canvas x-ref="prTest" role="img"
+                       :aria-label="'Đường precision–recall của mô hình xuất trên tập kiểm thử, PR-AUC ' + fmt.num(s.headline?.pr_auc?.value, 3)"></canvas></div>
+                </figure>
+                <figure class="mini-chart">
+                  <figcaption>ROC</figcaption>
+                  <div class="chart-box chart-mini"><canvas x-ref="rocTest" role="img"
+                       :aria-label="'Đường ROC của mô hình xuất trên tập kiểm thử, ROC-AUC ' + fmt.num(s.headline?.roc_auc?.value, 3)"></canvas></div>
+                </figure>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4 — Accuracy không phân biệt được mô hình, PR-AUC thì có (G-2) -->
+          <div class="card">
+            <h2 class="card-title">Accuracy gần như không phân biệt được các mô hình — PR-AUC thì có</h2>
+            <p class="card-sub">Tập kiểm thử. Mô hình rỗng luôn đoán "hợp lệ" vẫn đạt accuracy 99,83% mà không bắt được gian lận nào.</p>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Mô hình</th>
+                    <th scope="col" class="num">Accuracy</th>
+                    <th scope="col" class="bar-col"><span class="visually-hidden">Accuracy dạng thanh</span></th>
+                    <th scope="col" class="num">PR-AUC</th>
+                    <th scope="col" class="bar-col"><span class="visually-hidden">PR-AUC dạng thanh</span></th>
+                    <th scope="col" class="num">Ngưỡng</th>
+                    <th scope="col" class="num">Bắt được</th>
+                    <th scope="col" class="num">Cảnh báo giả</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="b in baselines" :key="b.model">
+                    <tr>
+                      <td x-text="b.label"></td>
+                      <td class="num" x-text="fmt.pct(b.accuracy, 2)"></td>
+                      <td class="bar-col" aria-hidden="true"><span class="inline-bar" :style="`width:${bar(b.accuracy)}`"></span></td>
+                      <td class="num" x-text="fmt.num(b.pr_auc, 3)"></td>
+                      <td class="bar-col" aria-hidden="true"><span class="inline-bar" :style="`width:${bar(b.pr_auc)}`"></span></td>
+                      <td class="num mono" x-text="fmt.tau(b.threshold)"></td>
+                      <td class="num" x-text="b.tp + '/' + (b.tp + b.fn)"></td>
+                      <td class="num" x-text="fmt.int(b.fp)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <!-- 5 — SHAP cạnh kiểm định thống kê -->
+            <div class="card">
+              <h2 class="card-title">Xếp hạng đặc trưng: SHAP đặt cạnh kiểm định thống kê</h2>
+              <p class="card-sub">Hạng 1 là quan trọng nhất. Cột thống kê lấy từ notebook 02; "—" là đặc trưng không có trong phép kiểm định đó.</p>
+              <div class="table-wrap table-scroll">
+                <table class="data-table compact">
+                  <thead>
+                    <tr>
+                      <th scope="col">Đặc trưng</th>
+                      <th scope="col" class="num">Hạng SHAP</th>
+                      <th scope="col" class="num">Mean |SHAP|</th>
+                      <th scope="col" class="num">Cohen's d</th>
+                      <th scope="col" class="num">Cliff's δ</th>
+                      <th scope="col" class="num">Pearson</th>
+                      <th scope="col" class="num">Logistic</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <template x-for="r in shapRows" :key="r.feature">
+                      <tr>
+                        <td class="mono" x-text="r.feature"></td>
+                        <td class="num" x-text="rank(r.rank_shap)"></td>
+                        <td class="num" x-text="fmt.num(r.mean_abs_shap, 3)"></td>
+                        <td class="num" x-text="rank(r.rank_cohens_d)"></td>
+                        <td class="num" x-text="rank(r.rank_cliffs_delta)"></td>
+                        <td class="num" x-text="rank(r.rank_pearson)"></td>
+                        <td class="num" x-text="rank(r.rank_lr)"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+              <p class="pca-inline">V1–V28 là thành phần chính sau PCA: bảng cho biết đặc trưng nào ảnh hưởng tới dự đoán, không cho biết nguyên nhân nghiệp vụ.</p>
+            </div>
+
+            <!-- 6 — Hai cách chia tập -->
+            <div class="card">
+              <h2 class="card-title">Đối chiếu cách chia tập</h2>
+              <p class="card-sub">Chia theo thời gian gần với triển khai thật hơn; PR-AUC giảm là bằng chứng mô hình chịu ảnh hưởng của trôi dạt giữa hai ngày.</p>
+              <div class="split-list">
+                <template x-for="r in splits" :key="r.key">
+                  <div class="split">
+                    <h3 x-text="r.label"></h3>
+                    <dl class="kv kv-tight">
+                      <div><dt>Huấn luyện / kiểm thử</dt><dd x-text="fmt.int(r.n_train) + ' / ' + fmt.int(r.n_test)"></dd></div>
+                      <div><dt>Gian lận trong tập kiểm thử</dt><dd x-text="fmt.int(r.n_fraud_test)"></dd></div>
+                      <div><dt>PR-AUC out-of-fold</dt><dd x-text="fmt.num(r.pr_auc_oof, 3)"></dd></div>
+                      <div><dt>PR-AUC kiểm thử (KTC 95%)</dt><dd x-text="fmt.num(r.pr_auc, 3) + ' (' + fmt.num(r.pr_auc_ci_low, 3) + '–' + fmt.num(r.pr_auc_ci_high, 3) + ')'"></dd></div>
+                      <div><dt>Recall / precision tại ngưỡng chọn trên OOF</dt><dd x-text="fmt.num(r.recall, 2) + ' / ' + fmt.num(r.precision, 2)"></dd></div>
+                    </dl>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- UI-05 — Chế độ phát lại (07 §7)                                  -->
+      <!-- ============================================================== -->
+      <section class="screen" x-data="replayScreen" x-show="$store.app.route === 'replay'" x-cloak aria-label="Chế độ phát lại">
+        <div class="card replay-bar">
+          <div class="clock">
+            <span class="eyebrow">Đồng hồ mô phỏng · ngày 2</span>
+            <span class="clock-time figure" x-text="fmt.clock(simSeconds)" aria-live="off"></span>
+          </div>
+          <div class="replay-buttons">
+            <button type="button" class="btn btn-primary" @click="play()"
+                    x-show="!['playing', 'connecting', 'reconnecting'].includes(status)"
+                    x-text="status === 'paused' ? '▶ Tiếp tục' : status === 'ended' ? '▶ Phát lại từ đầu' : '▶ Phát'"></button>
+            <button type="button" class="btn" @click="pause()" x-show="['playing', 'connecting', 'reconnecting'].includes(status)">❚❚ Tạm dừng</button>
+            <button type="button" class="btn" @click="reset()" :disabled="status === 'idle'">↺ Đặt lại</button>
+          </div>
+          <div class="speed">
+            <label for="replay-speed">Tốc độ</label>
+            <input id="replay-speed" type="range" min="0" :max="speeds.length - 1" step="1" :value="speedIndex"
+                   @change="setSpeed($event.target.value)" @input="speedIndex = Number($event.target.value)"
+                   :aria-valuetext="'nén ' + fmt.int(speed) + ' lần'">
+            <output for="replay-speed" class="mono" x-text="fmt.int(speed) + '×'"></output>
+            <small class="muted" x-text="'1 giờ dữ liệu ≈ ' + (3600 / speed >= 60 ? fmt.num(3600 / speed / 60, 0) + ' phút' : fmt.num(3600 / speed, 0) + ' giây') + ' thực'"></small>
+          </div>
+          <p class="replay-status" role="status">
+            <span class="status-dot" :class="'dot-' + status" aria-hidden="true"></span>
+            <span x-text="{ idle: 'Sẵn sàng', connecting: 'Đang kết nối…', playing: 'Đang phát', paused: 'Tạm dừng', reconnecting: 'Đang nối lại', ended: 'Đã hết dữ liệu' }[status]"></span>
+            <span class="muted" x-show="message" x-text="' — ' + message"></span>
+          </p>
+        </div>
+
+        <div class="tiles">
+          <div class="tile">
+            <div class="tile-label">Đã xử lý</div>
+            <div class="tile-value" x-text="fmt.int(processed)"></div>
+            <div class="tile-sub" x-text="dayTotal ? fmt.pct(progress) + ' của ' + fmt.int(dayTotal) + ' giao dịch ngày 2' : 'giao dịch'"></div>
+          </div>
+          <div class="tile">
+            <div class="tile-label">Cảnh báo</div>
+            <div class="tile-value" x-text="fmt.int(alerts)"></div>
+            <div class="tile-sub" x-text="processed ? fmt.pct(alerts / processed, 2) + ' số giao dịch' : 'vượt ngưỡng'"></div>
+          </div>
+          <div class="tile">
+            <div class="tile-label">Cảnh báo mỗi giờ mô phỏng</div>
+            <div class="tile-value" x-text="alertsPerHour === null ? '—' : fmt.num(alertsPerHour, 1)"></div>
+            <div class="tile-sub">trên phần luồng đã phát (20% giao dịch thật)</div>
+          </div>
+          <div class="tile">
+            <div class="tile-label">Ngưỡng máy chủ đang dùng</div>
+            <div class="tile-value" x-text="fmt.tau(threshold ?? $store.app.tau)"></div>
+            <div class="tile-sub">đọc lại mỗi 5 giây — đổi ngưỡng giữa chừng có tác dụng ngay</div>
+          </div>
+        </div>
+        <div class="progress" role="progressbar" aria-label="Tiến độ phát lại ngày 2" aria-valuemin="0" aria-valuemax="100"
+             :aria-valuenow="Math.round(progress * 100)"><span :style="`width:${progress * 100}%`"></span></div>
+
+        <div class="grid-2 grid-replay">
+          <div class="card">
+            <h2 class="card-title">Dòng giao dịch</h2>
+            <p class="card-sub">Mới nhất ở trên. Dưới ngưỡng trôi qua màu xám; vượt ngưỡng chuyển đỏ rồi rơi vào hàng đợi.</p>
+            <ol class="feed" aria-label="Giao dịch vừa phát">
+              <template x-for="ev in feed" :key="ev.key">
+                <li class="feed-item" :class="ev.alert ? 'is-alert' : 'is-pass'">
+                  <span class="mono feed-time" x-text="ev.sim_time"></span>
+                  <span class="mono" x-text="ev.id"></span>
+                  <span class="num" x-text="fmt.num(ev.amount) + ' EUR'"></span>
+                  <span class="num" x-text="fmt.score(ev.risk_score)"></span>
+                  <span class="feed-tag" x-text="ev.alert ? 'Cảnh báo → hàng đợi' : 'cho qua'"></span>
+                </li>
+              </template>
+            </ol>
+            <p class="muted" x-show="!feed.length">Bấm Phát để bắt đầu dòng giao dịch của ngày 2.</p>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Cảnh báo vừa vào hàng đợi</h2>
+            <p class="card-sub">Bấm để mở chi tiết. Phát lại ghi vào cơ sở dữ liệu theo mẻ 100 dòng, nên giao dịch vừa phát có thể cần vài giây mới mở được.</p>
+            <ul class="alert-list">
+              <template x-for="ev in alertList" :key="ev.key">
+                <li>
+                  <button type="button" class="alert-item" @click="openAlert(ev, $el)">
+                    <span class="risk" :class="'risk-' + level(ev.risk_score).key">
+                      <span class="risk-shape" aria-hidden="true" x-text="level(ev.risk_score).shape"></span>
+                      <span x-text="fmt.score(ev.risk_score)"></span>
+                    </span>
+                    <span class="mono" x-text="ev.id"></span>
+                    <span class="num" x-text="fmt.num(ev.amount) + ' EUR'"></span>
+                    <span class="mono muted" x-text="ev.sim_time"></span>
+                  </button>
+                </li>
+              </template>
+            </ul>
+            <p class="muted" x-show="!alertList.length">Chưa có cảnh báo.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- UI-02 — Chi tiết giao dịch: ngăn kéo bên phải (07 §4)               -->
+  <!-- ================================================================== -->
+  <div x-data="txDrawer">
+    <dialog class="drawer" x-ref="dialog" @close="onClose()" @keydown="onKey($event)" aria-labelledby="drawer-title">
+      <header class="drawer-head">
+        <div>
+          <p class="eyebrow">Chi tiết giao dịch</p>
+          <h2 id="drawer-title" class="mono" x-text="id || ''"></h2>
+        </div>
+        <button type="button" class="btn btn-ghost" x-ref="closeButton" @click="close()">Đóng <kbd>Esc</kbd></button>
+      </header>
+
+      <div class="drawer-body">
+        <template x-if="error">
+          <div class="empty" role="alert">
+            <p><strong x-text="error.status === 404 ? 'Chưa tìm thấy giao dịch này.' : 'Không tải được giao dịch.'"></strong></p>
+            <p class="muted" x-show="error.status === 404 && id && id.startsWith('RP-')">Phát lại ghi vào cơ sở dữ liệu theo mẻ 100 dòng — thử lại sau vài giây.</p>
+            <p class="muted" x-show="error.status !== 404" x-text="error.message"></p>
+            <button type="button" class="btn" @click="retry()">Thử lại</button>
+          </div>
+        </template>
+
+        <!-- Điểm rủi ro hiện ngay; không chờ SHAP -->
+        <template x-if="loading">
+          <div class="score-block" aria-hidden="true"><span class="skeleton skeleton-lg"></span><span class="skeleton"></span></div>
+        </template>
+        <template x-if="tx">
+          <div>
+            <div class="score-block">
+              <div class="score-top">
+                <div class="score-big" :class="'risk-' + level.key">
+                  <span class="risk-shape" aria-hidden="true" x-text="level.shape"></span>
+                  <span x-text="fmt.score(tx.risk_score)"></span>
+                </div>
+                <div class="score-verdict">
+                  <p x-show="tx.decision !== 'allow'">
+                    Vượt ngưỡng <span class="mono" x-text="fmt.tau(tx.threshold)"></span> →
+                    <strong class="verdict" :class="'verdict-' + tx.decision" x-text="LABELS.decision[tx.decision].toUpperCase()"></strong>
+                  </p>
+                  <p x-show="tx.decision === 'allow'">
+                    Dưới ngưỡng <span class="mono" x-text="fmt.tau(tx.threshold)"></span> → <strong class="verdict verdict-allow">CHO QUA</strong>
+                  </p>
+                  <p class="muted small">Điểm chính xác <span class="mono" x-text="fmt.raw(tx.risk_score)"></span></p>
+                </div>
+              </div>
+              <div class="meter" role="img"
+                   :aria-label="'Điểm rủi ro ' + fmt.score(tx.risk_score) + ', ngưỡng ' + fmt.tau(tx.threshold)">
+                <span class="meter-fill" :class="'risk-' + level.key" :style="`width:${tx.risk_score * 100}%`"></span>
+                <span class="meter-tick" :style="`left:${tx.threshold * 100}%`"></span>
+              </div>
+              <div class="meter-scale" aria-hidden="true"><span>0%</span><span>ngưỡng ▲ tại <span x-text="fmt.pct(tx.threshold, 2)"></span></span><span>100%</span></div>
+            </div>
+
+            <p class="banner banner-warn" x-show="!tx.model_version_current">
+              Điểm do mô hình <span class="mono" x-text="tx.model_version"></span> chấm, khác mô hình đang phục vụ — không so trực tiếp được với ngưỡng hiện hành.
+            </p>
+
+            <dl class="facts">
+              <div>
+                <dt>Số tiền</dt>
+                <dd><span x-text="fmt.eur(tx.amount)"></span>
+                  <small x-text="'cao hơn ' + fmt.pct(tx.amount_percentile, 0) + ' giao dịch của tập kiểm thử'"></small></dd>
+              </div>
+              <div><dt>Thời điểm</dt><dd x-text="fmt.timeOffset(tx.features.Time)"></dd></div>
+              <div><dt>Nguồn</dt><dd x-text="LABELS.source[tx.source] + (tx.batch_id ? ' · ' + tx.batch_id : '')"></dd></div>
+              <div><dt>Mô hình chấm</dt><dd class="mono" x-text="tx.model_version"></dd></div>
+            </dl>
+          </div>
+        </template>
+
+        <!-- Thác nước SHAP -->
+        <section class="shap" aria-labelledby="shap-title" x-show="!error">
+          <h3 id="shap-title">Vì sao mô hình cho điểm này</h3>
+          <template x-if="expLoading">
+            <div aria-hidden="true">
+              <template x-for="n in 8" :key="n"><span class="skeleton skeleton-row-sm"></span></template>
+            </div>
+          </template>
+          <template x-if="expError">
+            <p class="field-error" role="alert" x-text="'Không tính được SHAP: ' + expError.message"></p>
+          </template>
+          <template x-if="waterfall">
+            <div>
+              <table class="waterfall">
+                <caption class="visually-hidden">Đóng góp SHAP của từng đặc trưng, thang log-odds</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Đặc trưng</th>
+                    <th scope="col" class="num">Giá trị</th>
+                    <th scope="col" class="wf-head-track"><span>thang log-odds</span><span class="wf-legend-tau" aria-hidden="true">│ ngưỡng</span></th>
+                    <th scope="col" class="num">SHAP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="row in waterfall.rows" :key="row.key">
+                    <tr :class="'wf-' + row.kind">
+                      <template x-if="row.kind === 'group'">
+                        <th scope="rowgroup" colspan="4" x-text="row.label"></th>
+                      </template>
+                      <template x-if="row.kind !== 'group'">
+                        <th scope="row" class="wf-name" x-text="row.feature ? fmt.feature(row.feature) : row.label"></th>
+                      </template>
+                      <template x-if="row.kind !== 'group'">
+                        <td class="num mono" x-text="row.feature ? fmt.featureValue(row.feature, row.value) : ''"></td>
+                      </template>
+                      <template x-if="row.kind !== 'group'">
+                        <td class="wf-track" aria-hidden="true">
+                          <span class="wf-tau" x-show="waterfall.tauPos !== null" :style="`left:${waterfall.tauPos}%`"></span>
+                          <span class="wf-bar" :style="`left:${row.left}%;width:${row.width}%`"></span>
+                        </td>
+                      </template>
+                      <template x-if="row.kind !== 'group'">
+                        <td class="num mono" x-text="row.kind === 'base' ? fmt.num(row.to, 2)
+                                                    : row.kind === 'total' ? '= ' + fmt.num(row.to, 2)
+                                                    : fmt.signed(row.shap, 2)"></td>
+                      </template>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p class="hint">
+                Giá trị cơ sở cộng mọi đóng góp bằng f(x) = <span x-text="fmt.num(exp.margin, 2)"></span>;
+                điểm rủi ro = 1 / (1 + e<sup>−f(x)</sup>) = <span x-text="fmt.score(waterfall.probability)"></span>.
+                Vạch dọc là ngưỡng hiện hành quy về cùng thang (<span x-text="fmt.num(waterfall.tauLogit, 2)"></span>).
+                Giá trị cơ sở cao vì tính theo trọng số huấn luyện (scale_pos_weight ≈ 600).
+              </p>
+              <p class="hint" x-show="waterfall.nPositive < 5">
+                Giao dịch này chỉ có <span x-text="waterfall.nPositive"></span> đặc trưng đẩy điểm lên — mô hình kéo gần hết đặc trưng về phía an toàn.
+                Danh sách không mượn một yếu tố kéo xuống để cho đủ năm.
+              </p>
+            </div>
+          </template>
+        </section>
+
+        <!-- Chú thích PCA cố định, không thu gọn được (UI-D2) -->
+        <aside class="pca-note" role="note">
+          <span class="pca-icon" aria-hidden="true">i</span>
+          <p>V1–V28 là thành phần chính sau PCA. Chúng cho biết đặc trưng nào ảnh hưởng tới dự đoán, nhưng
+            <strong>không diễn giải được</strong> thành nguyên nhân nghiệp vụ.</p>
+        </aside>
+      </div>
+
+      <footer class="drawer-actions" x-show="tx">
+        <template x-if="revealed">
+          <div class="review-result" role="status">
+            <p>Kết luận của bạn: <strong x-text="LABELS.review[decided]"></strong>
+              <span class="muted" x-show="!saved && tx && tx.review"
+                    x-text="tx && tx.review ? '(' + fmt.datetime(tx.review.reviewed_at) + ', ngưỡng khi đó ' + fmt.tau(tx.review.threshold_used) + ')' : ''"></span>
+            </p>
+            <template x-if="trueLabel !== null && trueLabel !== undefined">
+              <p>Nhãn thật: <strong x-text="trueLabel === 1 ? 'Gian lận' : 'Hợp lệ'"></strong> —
+                <span :class="matches ? 'text-good' : 'text-bad'" x-text="matches ? '✓ khớp kết luận của bạn' : '✗ khác kết luận của bạn'"></span>
+              </p>
+            </template>
+            <p class="muted" x-show="trueLabel === null || trueLabel === undefined">
+              Giao dịch này không có nhãn thật (tệp tải lên không có cột Class).
+            </p>
+          </div>
+        </template>
+        <p class="muted small" x-show="!revealed">Nhãn thật (nếu có) chỉ hiện sau khi bạn kết luận — để tự đối chiếu mà không bị mồi.</p>
+        <label for="review-note" class="field-label">Ghi chú (tùy chọn)</label>
+        <textarea id="review-note" rows="2" maxlength="2000" x-model="note"></textarea>
+        <div class="review-buttons">
+          <button type="button" class="btn btn-danger" @click="decide('confirmed_fraud')" :disabled="!tx || saving"
+                  :aria-pressed="decided === 'confirmed_fraud' ? 'true' : 'false'">
+            <kbd>F</kbd> Xác nhận gian lận
+          </button>
+          <button type="button" class="btn" @click="decide('false_alarm')" :disabled="!tx || saving"
+                  :aria-pressed="decided === 'false_alarm' ? 'true' : 'false'">
+            <kbd>A</kbd> Đánh dấu báo động sai
+          </button>
+        </div>
+      </footer>
+    </dialog>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- Thư viện giao dịch mẫu (API-14)                                     -->
+  <!-- ================================================================== -->
+  <div x-data="samplesDialog">
+    <dialog class="modal" x-ref="dialog" @close="onClose()" aria-labelledby="samples-title">
+      <header class="drawer-head">
+        <div>
+          <p class="eyebrow">Nạp dữ liệu</p>
+          <h2 id="samples-title">Thư viện giao dịch mẫu</h2>
+        </div>
+        <button type="button" class="btn btn-ghost" @click="close()">Đóng <kbd>Esc</kbd></button>
+      </header>
+      <div class="modal-body">
+        <p class="muted">
+          200 giao dịch lấy từ tập kiểm thử. Chấm một mẫu là ghi nó vào cơ sở dữ liệu kèm nhãn thật;
+          mẫu vượt ngưỡng hiện hành sẽ vào hàng đợi.
+        </p>
+        <p x-show="loading">Đang tải thư viện…</p>
+        <p class="field-error" role="alert" x-show="error" x-text="error"></p>
+        <div class="segmented" role="group" aria-label="Nhóm mẫu" x-show="items.length">
+          <template x-for="(info, key) in categories" :key="key">
+            <button type="button" :aria-pressed="category === key ? 'true' : 'false'" @click="category = key"
+                    x-text="LABELS.category[key] + ' (' + info.count + ')'"></button>
+          </template>
+        </div>
+        <p class="hint" x-show="categories[category]" x-text="categories[category] ? 'Nhóm này: ' + categories[category].rule : ''"></p>
+        <div class="modal-actions" x-show="items.length">
+          <button type="button" class="btn btn-primary" @click="scoreCategory()" :disabled="busy || !pendingInCategory.length"
+                  x-text="busy ? 'Đang chấm…' : 'Nạp ' + pendingInCategory.length + ' mẫu còn lại của nhóm này'"></button>
+        </div>
+        <div class="table-wrap table-scroll" x-show="items.length">
+          <table class="data-table compact">
+            <thead>
+              <tr>
+                <th scope="col">Mẫu</th>
+                <th scope="col">Mô tả</th>
+                <th scope="col" class="num">Số tiền</th>
+                <th scope="col">Kết quả</th>
+                <th scope="col"><span class="visually-hidden">Hành động</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <template x-for="item in visible" :key="item.id">
+                <tr>
+                  <td class="mono" x-text="item.id"></td>
+                  <td class="wrap" x-text="item.description"></td>
+                  <td class="num" x-text="fmt.num(item.amount)"></td>
+                  <td>
+                    <template x-if="results[item.id] && !results[item.id].error">
+                      <span>
+                        <span class="mono" x-text="results[item.id].transaction_id"></span> ·
+                        <span x-text="fmt.score(results[item.id].risk_score)"></span> ·
+                        <span x-text="LABELS.decision[results[item.id].decision]"></span>
+                      </span>
+                    </template>
+                    <template x-if="results[item.id] && results[item.id].error">
+                      <span class="text-bad" x-text="results[item.id].error"></span>
+                    </template>
+                  </td>
+                  <td>
+                    <button type="button" class="btn btn-small" @click="scoreSingle(item)" :disabled="busy"
+                            x-text="results[item.id] && !results[item.id].error ? 'Chấm lại' : 'Chấm điểm'"></button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </dialog>
+  </div>
+
+  <div class="toasts" aria-live="polite">
+    <template x-for="t in $store.app.toasts" :key="t.id">
+      <div class="toast" :class="'toast-' + t.kind" x-text="t.message"></div>
+    </template>
+  </div>
+</body>
+</html>

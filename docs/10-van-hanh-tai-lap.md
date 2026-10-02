@@ -45,9 +45,13 @@ python -m pytest        # phải xanh trước khi chạy notebook
 Sao chép `.env.example` thành `.env` và chỉnh nếu cần:
 
 ```
+POSTGRES_HOST_PORT=5432
 DATABASE_URL=postgresql+psycopg://fraud:fraud@localhost:5432/fraud
 TEST_DATABASE_URL=postgresql+psycopg://fraud:fraud@localhost:5432/fraud_test
 ```
+
+`POSTGRES_HOST_PORT` là cổng mà `docker-compose.yml` mở ra máy chủ. `docker compose` và API
+cùng đọc tệp `.env` này.
 
 Trong Docker Compose, dịch vụ `api` dùng host `db` thay cho `localhost` — giá trị
 đó đã đặt sẵn trong `docker-compose.yml`, không cần sửa `.env`.
@@ -71,8 +75,17 @@ docker compose exec db psql -U fraud -d fraud
 # SELECT count(*), max(risk_score) FROM transactions;
 ```
 
-Nếu cổng 5432 đã bị một PostgreSQL khác trên máy chiếm, đổi ánh xạ cổng trong
-`docker-compose.yml` thành `"5433:5432"` và sửa `DATABASE_URL` tương ứng.
+Nếu cổng 5432 đã bị một PostgreSQL khác trên máy chiếm (máy phát triển của dự án gặp đúng
+trường hợp này: PostgreSQL 17 cài sẵn), **không** sửa `docker-compose.yml`. Chỉ cần đặt trong `.env`:
+
+```
+POSTGRES_HOST_PORT=5433
+DATABASE_URL=postgresql+psycopg://fraud:fraud@localhost:5433/fraud
+TEST_DATABASE_URL=postgresql+psycopg://fraud:fraud@localhost:5433/fraud_test
+```
+
+Docker Desktop phải đang chạy. Lỗi `failed to connect to the docker API … dockerDesktopLinuxEngine`
+nghĩa là chưa bật nó.
 
 ### 2.4 Dữ liệu
 
@@ -125,7 +138,7 @@ Chạy notebook theo đúng thứ tự, mỗi notebook trong kernel sạch:
 | 5 | `05_advanced_models.ipynb` | ~20 phút tìm kiếm (`scripts/run_search.py`) + ~20 phút notebook | `reports/search_results.csv`, `final_test_metrics.csv`, `split_comparison.csv` |
 | 6 | `06_threshold_and_cost.ipynb` | 2–5 phút | Đường cong chi phí |
 | 7 | `07_explainability.ipynb` | 10–20 phút | Biểu đồ SHAP |
-| 8 | `08_export_artifacts.ipynb` | 2–5 phút | Toàn bộ `models/*`, `data/sample_pool.json` |
+| 8 | `08_export_artifacts.ipynb` | 5–10 phút | Toàn bộ `models/*`, `data/sample_pool.json`, cột `risk_score` của `data/test_set.parquet` |
 
 Tổng khoảng 2–4 giờ, phần lớn nằm ở notebook 04.
 
@@ -149,7 +162,12 @@ Kiểm tra hiện vật đã đủ:
 ```bash
 ls models/
 # model.joblib  explainer.joblib  metrics.json  threshold.json
+
+pytest tests/test_artifacts.py      # 7 ca tích hợp kiểm chính các tệp vừa sinh
 ```
+
+Notebook 08 phải chạy **sau** notebook 03: chạy lại 03 là ghi đè `test_set.parquet` và mất cột
+`risk_score` mà 08 thêm vào.
 
 ## 4. Chạy ứng dụng
 
@@ -186,8 +204,23 @@ docker compose exec db psql -U fraud -d fraud \n  -c "TRUNCATE transactions, rev
 ```bash
 docker compose up -d db                        # chỉ cơ sở dữ liệu
 alembic upgrade head                           # khi có migration mới
-uvicorn api.main:app --reload --port 8000
+uvicorn api.main:app --reload --port 8000     # khởi động khoảng 5 giây; /api/v1/health trả 200 là xong
 python -m http.server 3000 --directory web     # cửa sổ terminal thứ hai
+```
+
+Mở giao diện ở `http://localhost:3000`, không mở thẳng `web/index.html`: API chỉ cho phép hai origin
+`http://localhost:3000` và `http://127.0.0.1:3000` (CORS). Giao diện không tải gì từ Internet —
+Alpine.js và Chart.js nằm trong `web/vendor/` (NFR-08). Chạy lại notebook 08 thì phải khởi động lại
+uvicorn để nạp `metrics.json` mới. Lệnh chi tiết và cách nạp dữ liệu demo:
+[lenh-chay-giai-doan-8.md](lenh-chay-giai-doan-8.md).
+
+Bản Next.js của giao diện (`frontend/`, cần Node.js 20.9+) thay cho dòng `http.server` ở trên — cùng cổng
+3000 nên chạy một trong hai:
+
+```bash
+cd frontend
+npm install        # lần đầu
+npm run dev        # hoặc: npm run build && npm run serve
 ```
 
 Quy trình khi đổi lược đồ:
@@ -215,8 +248,16 @@ pytest tests/test_features.py -v    # chỉ kiểm thử vàng, không cần cơ
 pytest -k threshold                 # theo từ khóa
 ```
 
-`tests/conftest.py` tự tạo cơ sở dữ liệu `fraud_test` và xóa sau khi chạy xong;
-không bao giờ đụng tới cơ sở dữ liệu phát triển ([08 §1.1](08-ke-hoach-kiem-thu.md)).
+`tests/conftest.py` tự tạo cơ sở dữ liệu `fraud_test` (theo `TEST_DATABASE_URL`), dựng lược
+đồ bằng chính Alembic, và xóa sau khi chạy xong; không bao giờ đụng tới cơ sở dữ liệu phát triển
+([08 §1.1](08-ke-hoach-kiem-thu.md)). PostgreSQL không chạy thì các ca cần cơ sở dữ liệu
+(`test_db.py`, `test_api.py`, phần lớn `test_scoring.py`) **tự bỏ qua**, phần còn lại vẫn chạy.
+Thiếu hiện vật trong `models/` thì các ca cần mô hình cũng bỏ qua. TC-12
+(`test_threshold_parity.py`) chạy `web/threshold.js` bằng Node.js; máy không có `node` trong `PATH`
+thì ca đó tự bỏ qua.
+
+Toàn bộ khoảng 3 phút khi có PostgreSQL và hiện vật; lâu nhất là ca NFR-01 (1.000 lời gọi
+`/score`) và ca 10.000 dòng của T-46.
 
 Chạy `pytest` trước mỗi commit. Chi tiết các ca ở
 [08 — Kế hoạch kiểm thử](08-ke-hoach-kiem-thu.md).
@@ -231,16 +272,25 @@ Chạy `pytest` trước mỗi commit. Chi tiết các ca ở
 | Song song hóa | XGBoost `tree_method="hist"` cho điểm **lệch nhẹ theo số luồng** (thứ tự cộng dồn histogram thay đổi): cùng cấu hình chạy `n_jobs=1` và `n_jobs=-1` khác nhau ở chữ số thứ ba–tư của xác suất. Trên cùng một máy thì tái lập tuyệt đối. Khi kiểm tra tái lập (T-38) trên máy khác, ghi lại số lõi; nếu lệch vượt 0,001 thì ghim `n_jobs` cố định. Phát hiện ở giai đoạn 4, xem `tests/test_search.py` |
 | Phiên bản mô hình | `model_version` ghi trong `threshold.json` và gắn vào mọi phản hồi API |
 
-Quy trình kiểm tra tái lập (thực hiện ngày 20):
+Quy trình kiểm tra tái lập (T-38) đã viết thành một lệnh:
 
 ```bash
-# 1. Ghi lại PR-AUC hiện tại
-python -c "import json; print(json.load(open('models/metrics.json'))['headline']['pr_auc']['value'])"
-
-# 2. Chạy lại toàn bộ notebook trong kernel sạch
-
-# 3. So lại — chênh lệch phải < 0,001
+python scripts/check_reproducibility.py              # 01 → 08 trong kernel sạch, khoảng 70 phút
+python scripts/check_reproducibility.py --only 08    # chỉ notebook 08, 5–10 phút
+python scripts/check_reproducibility.py --no-run     # chỉ in số hiện tại
 ```
+
+Script chụp chỉ số chính, dấu vân tay điểm (`metrics.json → fingerprint`) và mọi bảng
+`reports/*.csv`; chạy lại từng notebook bằng `nbconvert`, mỗi notebook một kernel mới; rồi chụp lại
+và so. Đạt khi PR-AUC lệch dưới 0,001. Kết quả từng dòng ghi vào `reports/reproducibility.csv`; các
+cột đo thời gian chạy được bỏ qua khi so.
+
+Script **không** chạy lại `scripts/run_grid.py` và `scripts/run_search.py` (45 + 20 phút): notebook
+04 và 05 đọc điểm lưu của hai bước đó. Bù lại, notebook 08 tự tính lại điểm out-of-fold của mô hình
+được chọn và so với điểm lưu của lưới.
+
+Lần kiểm tra 2026-09-27 (12 lõi): chạy lại 01 → 08 mất 71 phút, PR-AUC lệch **0**, dấu vân tay điểm
+và cả 11 bảng `reports/*.csv` trùng hoàn toàn. Chi tiết ở [lệnh chạy giai đoạn 6 §4](lenh-chay-giai-doan-6.md).
 
 Nếu lệch lớn hơn, tìm theo thứ tự: bước ngẫu nhiên chưa ghim seed → thao tác
 không ổn định về thứ tự (`groupby`, `set`) → khác phiên bản thư viện.

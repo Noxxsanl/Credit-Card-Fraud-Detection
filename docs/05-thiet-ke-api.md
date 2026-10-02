@@ -49,6 +49,17 @@ Quy tắc suy ra `risk_band` từ `risk_score` và ngưỡng hiện hành τ:
 Dải rủi ro là **dẫn xuất**, tính lại mỗi lần trả kết quả — vì τ thay đổi được
 (AR-03). Không lưu vào cơ sở dữ liệu.
 
+`decision` suy ra cùng cách, trùng với dải:
+
+| `decision` | Điều kiện | Dải tương ứng |
+|---|---|---|
+| `allow` | `score < τ` | `low`, `medium` |
+| `review` | `τ ≤ score < 3τ` | `high` |
+| `block` | `score ≥ 3τ` | `critical` |
+
+Biên `3τ` so bằng số thực máy (IEEE 754), giống hệt phép tính ở trình duyệt: với τ = 0,05 thì
+`3τ = 0,15000000000000002`, nên điểm 0,15 gõ tay thuộc dải `high`.
+
 ## 3. Chi tiết endpoint
 
 ### API-01 — `GET /api/v1/health`
@@ -392,7 +403,9 @@ Mọi lỗi trả về cùng một cấu trúc:
 
 | HTTP | `code` | Khi nào |
 |---|---|---|
-| 400 | `INVALID_REQUEST` | Tham số truy vấn sai định dạng |
+| 400 | `INVALID_REQUEST` | Tham số truy vấn sai định dạng, hoặc `section` không có trong `metrics.json` |
+| 405 | `METHOD_NOT_ALLOWED` | Sai phương thức HTTP cho một đường dẫn có thật |
+| 422 | `INVALID_BODY` | Thân yêu cầu sai cấu trúc: thiếu trường không phải đặc trưng, sai kiểu JSON, thân rỗng (TC-41), tệp CSV không đọc được |
 | 404 | `NOT_FOUND` | Không có giao dịch với id đã cho |
 | 413 | `PAYLOAD_TOO_LARGE` | Lô vượt 50.000 dòng hoặc tệp vượt 100 MB |
 | 422 | `MISSING_FEATURES` | Thiếu cột bắt buộc (DS-10) |
@@ -410,7 +423,7 @@ không bao giờ để ngoại lệ chưa bắt làm sập tiến trình (AC-A10
 | Chủ đề | Quy ước |
 |---|---|
 | Thời gian | Chuỗi ISO 8601, múi UTC, hậu tố `Z` |
-| Số thực | Điểm rủi ro làm tròn 4 chữ số thập phân trong phản hồi |
+| Số thực | Điểm rủi ro trả **nguyên độ chính xác**, không làm tròn — xem §7 |
 | Phân trang | `page` bắt đầu từ 1; luôn trả `total` |
 | CORS | Cho phép `http://localhost:3000` khi phát triển |
 | Phiên bản | Tiền tố `/api/v1`; thay đổi phá vỡ hợp đồng thì tăng lên `v2` |
@@ -427,3 +440,58 @@ không bao giờ để ngoại lệ chưa bắt làm sập tiến trình (AC-A10
 | UI-04 Hiệu năng | API-13 |
 | Phát lại | API-15, API-09 |
 | Thư viện mẫu | API-14, API-02 |
+
+## 7. Bản thi hành — những điểm cụ thể hơn hoặc khác hợp đồng ban đầu
+
+`api/schemas.py` là bản thi hành của tài liệu này (giai đoạn 7, 2026-09-28). Các điểm dưới đây
+là chỗ bản thi hành phải chọn một cách hiểu, hoặc phải đổi so với các ví dụ ở §3. Kiểm thử đi kèm:
+`tests/test_api.py`, `tests/test_scoring.py`, `tests/test_db.py`.
+
+| Endpoint | Điểm | Lý do |
+|---|---|---|
+| mọi phản hồi | `risk_score` **không** làm tròn 4 chữ số (khác §5 cũ) | Làm tròn ở máy chủ làm lệch so sánh với ngưỡng sát biên: điểm 0,023170 làm tròn thành 0,0232 thì trình duyệt thấy "vượt τ\* = 0,023173" trong khi máy chủ quyết định `allow`. Giao diện tự định dạng phần trăm |
+| mọi phản hồi | thời gian dạng ISO 8601 hậu tố `Z`, có thể kèm phần lẻ giây | Pydantic v2 |
+| API-01 | 503 trả mô hình lỗi chung; `details` chứa các trường của phản hồi 200 (`db`, `model_version`, `uptime_seconds`…) và `reason` khi thiếu hiện vật | TC-42 đòi `code = DATABASE_UNAVAILABLE`; hiện vật hỏng (pickle lỗi, lệch phiên bản) cũng thành 503 `MODEL_NOT_LOADED`, tiến trình không sập |
+| API-02 | thêm `sample_id` (tùy chọn): giao dịch lưu với `source = "sample"` và nhãn thật của mẫu | Thư viện mẫu (API-14) có nhãn; giữ nhãn thì UI-02 so được quyết định của người thẩm định với sự thật (FR-44) |
+| API-02 | `Amount` làm tròn tới xu **trước** khi chấm | Đúng giá trị nằm trong cột `NUMERIC(12, 2)` (ST-07), nên chấm lại từ cơ sở dữ liệu ra cùng điểm. Dữ liệu gốc đã có đúng 2 chữ số, không đổi gì |
+| API-02, API-03 | giới hạn `Amount ≤ 9.999.999.999,99`, `Time ≥ 0` | Sức chứa của `NUMERIC(12, 2)` và ràng buộc `ck_tx_time` |
+| API-03 | thêm `persist` (mặc định `true`) và `model_version`; mỗi phần tử `results` có `risk_band`, `decision` | TC-52; thử nhanh không ghi |
+| API-03 | lô có một phần tử sai → 422 cả lô, `details.errors[].row` chỉ phần tử đó | JSON khác CSV: người gửi sửa được ngay |
+| API-04 | `results` chỉ giữ 200 giao dịch điểm cao nhất (`results_truncated`); `rejection_reasons` tối đa 100 dòng (`rejection_reasons_truncated`) | Tệp 100 MB có khoảng 570.000 dòng — trả hết là 25 MB JSON. Hàng đợi đọc từ cơ sở dữ liệu, không từ phản hồi này |
+| API-04 | `row` đếm từ 1, không tính dòng tiêu đề | |
+| API-05 | `base_value` ở thang **log-odds** (3,28), không phải xác suất; thêm `margin` (= `base_value + Σ SHAP`), `remaining_shap`, `contributions` (cả 31 đặc trưng), `shap_output: "log-odds"` | Tính cộng chỉ đúng ở thang log-odds; thiếu `remaining_shap` thì biểu đồ thác nước không khép được |
+| API-05 | tên đặc trưng như `FEATURE_ORDER` (`Amount`, không phải `amount_scaled`); `value` là giá trị **gốc** (Amount theo đơn vị tiền) | UI-02 hiện "Amount 1.809,68" |
+| API-05 | `top_positive` là **tối đa** 5 đặc trưng có SHAP > 0, `top_negative` tối đa 3 đặc trưng có SHAP < 0 | Đo trên tập kiểm thử: 77% giao dịch có ít hơn 5 đặc trưng đẩy điểm lên (hợp lệ điểm thấp); trong hàng đợi (≥ τ\*) 114/115 có đủ 5; yếu tố âm luôn đủ 3. Cho đủ 5 bằng cách mượn một đóng góp âm là nói sai. AC-A4 hiểu là "đúng 5 và 3 khi mô hình có đủ" |
+| API-06 | thêm bộ lọc `review_status` (`pending`/`confirmed_fraud`/`false_alarm`) và `source`; `sort` nhận `risk_score`, `amount`, `created_at`, `hour`, có hoặc không có `-` | Bộ lọc trạng thái của UI-01 |
+| API-06 | lọc theo `band` mà không có `min_score` thì bỏ mặc định "≥ τ" | Nếu không, lọc `low`/`medium` luôn rỗng |
+| API-06 | mỗi dòng thêm `decision`, `review_decision`, `source`, `batch_id`, `model_version` | |
+| API-07 | `amount_percentile` so với phân bố `Amount` của **tập kiểm thử**, không với bảng `transactions` | Bảng chỉ có những gì người dùng đã nạp — vài chục dòng thì phân vị vô nghĩa. Câu SQL cũ ở 06 §4.4 còn sai: `WHERE` lọc trước hàm cửa sổ nên luôn ra 0 |
+| API-07 | thêm `features` (30 cột thô), `decision`, `threshold`, `review`, `model_version_current` | 06 §8: gắn nhãn cảnh báo khi điểm do mô hình khác chấm |
+| API-08 | phản hồi có `true_label` và `matches_label` | Nhãn chỉ lộ **sau** khi đã quyết định (UI-02) |
+| API-09 | thêm `default` (τ\* của `threshold.json`) | Nút "đặt lại" ở UI-03 |
+| API-09 | `source = "user"` chỉ khi ngưỡng trong `settings` được đặt cho **đúng** `model_version` đang chạy | Huấn luyện lại thì một con số đặt cho mô hình cũ không còn nghĩa (06 §2) |
+| API-10 | nhận thêm `cost_fn`, `cost_fp` (tùy chọn) để lưu cùng ngưỡng | Nút "áp dụng" ở UI-03 áp cả tham số chi phí |
+| API-11 | nhận thêm `cost_fn`, `cost_fp` (tùy chọn); mặc định lấy từ `settings` | |
+| API-12 | ngưỡng **chọn trên out-of-fold** (`models/oof_scores.npz`), dò trên mọi điểm khác nhau; chỉ số tại ngưỡng đo trên tập kiểm thử (`metrics_at_optimal`) và kèm số out-of-fold (`metrics_at_optimal_oof`); `curve` cũng trên out-of-fold (`curve_source`) | ML-08: đây là một phép **chọn** ngưỡng. Với chi phí mặc định API trả đúng τ\* = 0,023173 của `threshold.json` |
+| API-12 | có ràng buộc thì nghiệm là ngưỡng **chi phí thấp nhất trong vùng khả thi**; thêm `unconstrained_threshold`, `constraint_satisfied` | Khác phương án `budget_200_alerts` của `threshold.json` (τ **nhỏ nhất** trong ngân sách, tức recall cao nhất): với 200 cảnh báo/ngày, API chọn 0,9657 còn `threshold.json` ghi 0,9625 |
+| API-12 | thân rỗng → 422 (TC-41); gửi `{}` để dùng mọi giá trị mặc định | |
+| API-13 | `?section=<khóa>` trả `{"model_version", "<khóa>": …}`; khóa không có → 400 kèm danh sách khóa | |
+| API-14 | mỗi mẫu có `category` và `features` (30 cột) | Giao diện gửi thẳng `features` vào API-02 kèm `sample_id` |
+| API-15 | `start` là **giây mô phỏng tính từ đầu ngày 2** (0 ≤ start < 86.400), `speed` từ 1 tới 3.600, mặc định lấy `replay_speed` trong `settings` | Tạm dừng là ngắt kết nối; tiếp tục là mở lại với `start` = đồng hồ lúc dừng |
+| API-15 | thêm sự kiện `start` (tổng số, ngưỡng, `batch_id`) và `end`; `stats` gửi mỗi giây, cũng là nhịp "còn sống"; mỗi giao dịch có `risk_band`, `sim_seconds` | Nhãn thật **không** gửi trong luồng |
+| API-15 | mỗi giao dịch phát ra được ghi vào `transactions` (`source = "replay"`, mã `RP-<dòng>`), mẻ 100 dòng, `ON CONFLICT DO NOTHING` | Cảnh báo "rơi vào hàng đợi" (UI-05); phát lại lần hai không nhân đôi (TC-44) |
+
+Số đo trên máy phát triển (12 lõi, đang có tải nền khoảng 50% CPU):
+
+| Chỉ tiêu | Kết quả |
+|---|---|
+| NFR-01 — `/score` một giao dịch, 1.000 lần liên tiếp | p95 **45,6 ms** phía máy chủ (`latency_ms`), 57,8 ms tính cả lớp HTTP của `TestClient` |
+| NFR-02 / AC-A1 — `/score/upload` 10.000 dòng | **2,0 giây** gồm đọc CSV, chấm, `COPY` |
+| TC-54 — ghi 10.000 dòng bằng `COPY` | 0,53 giây, nhanh gấp khoảng 160 lần `INSERT` từng dòng (119 dòng/giây) |
+| T-47 — `/threshold/preview` | phần tính 0,12 ms; khoảng 15 ms tính cả HTTP và đọc `settings` |
+| `/explain` | 60–100 ms cả lời gọi |
+| AC-A6 — phát lại liên tục | 185 giây, 1.532 giao dịch, 0 lỗi |
+| Khởi động tới khi `/health` trả 200 | khoảng 5 giây (nạp hiện vật và chấm lại 1/50 tập kiểm thử để kiểm) |
+
+XGBoost chấm với **1 luồng** lúc phục vụ: dự đoán không phụ thuộc số luồng (trùng từng bit trên
+56.746 giao dịch), còn 12 luồng cho một giao dịch làm p95 của `/score` gần gấp đôi vì chi phí đồng bộ.

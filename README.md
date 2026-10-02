@@ -19,11 +19,16 @@ trên bộ dữ liệu [Credit Card Fraud Detection (Kaggle)](https://www.kaggle
 ```
 fraud-detection/
 ├── data/creditcard.csv          # không commit lên git (~144 MB)
-├── notebooks/                   # 01 → 07, chạy theo thứ tự
+├── notebooks/                   # 01 → 08, chạy theo thứ tự
 ├── src/                         # code dùng chung cho notebook và app
-├── models/best_model.pkl        # model tốt nhất sau notebook 05
+├── models/                      # hiện vật do notebook 08 sinh: model.joblib, explainer.joblib,
+│                                #   metrics.json, threshold.json
 ├── reports/                     # figures/ và bao-cao.md
-├── app.py                       # demo Streamlit
+├── api/                         # FastAPI + PostgreSQL (phương án B, giai đoạn 7)
+├── web/                         # giao diện 4 màn hình, HTML + Alpine.js + Chart.js (giai đoạn 8)
+├── frontend/                    # cùng giao diện, bản Next.js + TypeScript + Tailwind + Recharts
+├── tests/                       # pytest
+├── app.py                       # demo Streamlit (phương án A, dự phòng)
 └── requirements.txt
 ```
 
@@ -62,10 +67,47 @@ python scripts/run_grid.py --status   # xem tiến độ
 | `03_baseline.ipynb` | Mô hình rỗng + Logistic Regression + Decision Tree, bảng mốc cho G-2 → `data/test_set.parquet` | ✅ |
 | `04_imbalance_strategies.ipynb` | Lưới 5 chiến lược × 4 mô hình → `reports/grid_results.csv` | ✅ |
 | `05_advanced_models.ipynb` | Tinh chỉnh XGBoost, đánh giá trên tập test kèm khoảng tin cậy, chia theo thời gian, rà soát rò rỉ → `reports/final_test_metrics.csv` | ✅ |
-| `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ | |
-| `07_explainability.ipynb` | SHAP, feature importance, phân tích lỗi | |
+| `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ trên out-of-fold, độ nhạy theo tỷ lệ chi phí → `reports/threshold_comparison.csv` | ✅ |
+| `06b_autoencoder.ipynb` | (Tùy chọn) autoencoder chỉ học lớp hợp lệ, so với mô hình có giám sát | ✅ |
+| `07_explainability.ipynb` | SHAP toàn cục, đối chiếu xếp hạng thống kê, phân tích lỗi → `reports/shap_ranking.csv` | ✅ |
+| `08_export_artifacts.ipynb` | Xuất hiện vật cho API → `models/*`, `data/sample_pool.json` | ✅ |
 
-## Chạy demo
+## Phương án ứng dụng — đã chốt: **B** (T-39)
+
+Quyết định tại mốc cuối ngày 14 ([docs/09 §2](docs/09-ke-hoach-trien-khai.md)), ngày 2026-09-28:
+làm **phương án B** — API FastAPI + PostgreSQL và giao diện web riêng (giai đoạn 7–9).
+
+| Tiêu chí của mốc | Hiện trạng |
+|---|---|
+| Hiện vật đã đủ | Đủ: `model.joblib`, `explainer.joblib`, `metrics.json`, `threshold.json`, `oof_scores.npz`, `sample_pool.json` — kiểm bằng `tests/test_artifacts.py` |
+| Không còn nợ việc ở phần mô hình | Giai đoạn 0–6 xong 38/38 việc, gồm cả việc tùy chọn T-34; AC-M1…AC-M8 đạt |
+| Tái lập | T-38 đạt: chạy lại 01 → 08 trong kernel sạch, PR-AUC lệch 0 |
+
+Lưới an toàn vẫn giữ: nếu giai đoạn 7–8 trễ tới mức đe doạ ngày báo cáo (rủi ro R-03, R-08), quay về
+**phương án A** — Streamlit trong `app.py`, rút gọn giao diện và dồn thời gian cho báo cáo. Khi đó
+`app.py` phải đổi sang nạp `models/model.joblib` (hiện vẫn trỏ tới `best_model.pkl` cũ).
+
+## Chạy API và giao diện (phương án B)
+
+```bash
+cp .env.example .env                # chỉnh POSTGRES_HOST_PORT nếu cổng 5432 đã bị chiếm
+docker compose up -d db             # PostgreSQL 16
+alembic upgrade head                # dựng lược đồ
+uvicorn api.main:app --port 8000    # tài liệu API: http://localhost:8000/docs
+python -m http.server 3000 --directory web    # cửa sổ thứ hai → giao diện: http://localhost:3000
+```
+
+Hoặc bản Next.js (cần Node.js 20.9+), cũng ở cổng 3000 — chạy một trong hai:
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+Cần có hiện vật trong `models/` (chạy notebook 08). Giao diện là tệp tĩnh (Alpine.js + Chart.js nằm sẵn
+trong `web/vendor/`), không cần Node.js hay `npm install`. Chi tiết ở
+[docs/10 §4.2](docs/10-van-hanh-tai-lap.md) và [docs/lenh-chay-giai-doan-8.md](docs/lenh-chay-giai-doan-8.md).
+
+## Chạy demo Streamlit (phương án A, dự phòng)
 
 ```bash
 streamlit run app.py

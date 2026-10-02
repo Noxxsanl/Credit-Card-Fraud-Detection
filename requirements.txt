@@ -30,3 +30,7 @@ sqlalchemy>=2.0
 psycopg[binary]>=3.1
 alembic>=1.13
 python-dotenv>=1.0
+
+# Kiểm thử (tests/test_api.py dùng TestClient của FastAPI, cần httpx)
+pytest>=8.0
+httpx>=0.27

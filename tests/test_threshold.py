@@ -336,6 +336,5 @@ def test_constrained_criterion_requires_value(scores):
         pick_threshold(y_true, y_scores, "min_recall")
 
 
-@pytest.mark.skip(reason="TC-12: cần hàm JavaScript ở web/ — viết khi làm UI-03 (ngày 18)")
-def test_tc12_client_server_parity():
-    """Máy khách và máy chủ phải cho cùng TP/FP/FN trên 20 ngưỡng mẫu (UI-D1)."""
+# TC-12 (đối chiếu máy khách – máy chủ) nằm ở tests/test_threshold_parity.py: nó chạy
+# web/threshold.js bằng Node nên cần tệp và điều kiện bỏ qua riêng.

@@ -209,6 +209,7 @@ TRAINING_NOTEBOOKS = (
     "06_threshold_and_cost",
     "06b_autoencoder",
     "07_explainability",
+    "08_export_artifacts",
 )
 
 

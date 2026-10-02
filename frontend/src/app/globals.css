@@ -1,0 +1,409 @@
+@import "tailwindcss";
+
+/*
+ * Fraud Review Console — token thiết kế.
+ *
+ * Mọi màu khai báo một lần ở đây; Tailwind sinh tiện ích tương ứng (bg-page, text-ink,
+ * border-line, text-critical-text…). Biểu đồ SVG dùng lib/colors.ts với cùng giá trị.
+ * Màu trạng thái (đỏ/cam/vàng) không bao giờ đứng một mình: luôn kèm hình dạng và chữ (NFR-10).
+ * Chữ đạt tương phản WCAG AA (≥ 4,5:1) trên nền trắng.
+ */
+@theme {
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, monospace;
+
+  --color-page: #f3f3f0;
+  --color-surface: #ffffff;
+  --color-surface-2: #f8f8f6;
+  --color-ink: #0b0b0b;
+  --color-ink-2: #4a4945;
+  --color-ink-3: #8a8983;
+  --color-muted: #5f5e59;
+  --color-grid: #e4e3dd;
+  --color-axis: #c3c2b7;
+  --color-line: rgb(11 11 11 / 0.1);
+  --color-line-strong: rgb(11 11 11 / 0.22);
+
+  --color-accent: #1c5cab;
+  --color-accent-strong: #184f95;
+  --color-accent-soft: #e9f1fc;
+
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+
+  --color-critical: #d03b3b;
+  --color-serious: #ec835a;
+  --color-warning: #fab219;
+  --color-good: #0ca30c;
+  --color-critical-text: #b3261e;
+  --color-serious-text: #8a3a12;
+  --color-warning-text: #7a5200;
+  --color-good-text: #006300;
+  --color-critical-soft: #fcebea;
+  --color-serious-soft: #fdf1eb;
+  --color-warning-soft: #fff6df;
+  --color-good-soft: #eaf6ea;
+
+  --color-sidebar: #15181d;
+  --color-sidebar-ink: #ecebe8;
+  --color-sidebar-muted: #a9a8a2;
+  --color-sidebar-active: #272c35;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.05);
+  --shadow-float: 0 12px 40px rgb(0 0 0 / 0.18);
+
+  --animate-shimmer: shimmer 1.2s linear infinite;
+  --animate-feed-in: feed-in 0.28s ease-out;
+
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes feed-in {
+    from {
+      transform: translateY(-6px);
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.93em;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
+  kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: 0 5px;
+    border: 1px solid var(--color-line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    text-align: center;
+  }
+  dialog {
+    color: var(--color-ink);
+  }
+  dialog::backdrop {
+    background: rgb(12 14 18 / 0.42);
+  }
+}
+
+@layer components {
+  /* ---- nút ---- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 6px 14px;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font: inherit;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--color-surface-2);
+    border-color: rgb(11 11 11 / 0.32);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-accent-strong);
+    border-color: var(--color-accent-strong);
+  }
+  .btn-danger {
+    background: var(--color-critical-text);
+    border-color: var(--color-critical-text);
+    color: #fff;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: #97201a;
+    border-color: #97201a;
+  }
+  .btn-ghost {
+    background: transparent;
+    border-color: transparent;
+  }
+  .btn-sm {
+    min-height: 28px;
+    padding: 3px 10px;
+    font-size: 12.5px;
+  }
+  .btn[aria-pressed="true"] {
+    box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-ink);
+  }
+
+  /* ---- thẻ ---- */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    padding: 18px 20px;
+  }
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .card-sub {
+    font-size: 12.5px;
+    color: var(--color-muted);
+    margin-bottom: 12px;
+  }
+
+  /* ---- nhóm nút chọn một ---- */
+  .segmented {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 3px;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+  }
+  .segmented button {
+    min-height: 30px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--color-ink-2);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .segmented button[aria-pressed="true"] {
+    background: var(--color-surface);
+    color: var(--color-ink);
+    box-shadow: 0 0 0 1px var(--color-line-strong);
+  }
+
+  /* ---- bảng ---- */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  .data-table th,
+  .data-table td {
+    padding: 9px 12px;
+    text-align: left;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--color-grid);
+  }
+  .data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--color-surface-2);
+    color: var(--color-ink-2);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .data-table .num {
+    text-align: right;
+  }
+  .data-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .data-table.compact th,
+  .data-table.compact td {
+    padding: 6px 10px;
+  }
+  .row-link {
+    cursor: pointer;
+  }
+  .row-link:hover td {
+    background: var(--color-surface-2);
+  }
+  .row-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+  .row-link:focus-visible td {
+    background: var(--color-accent-soft);
+  }
+
+  /* ---- ô nhập ---- */
+  .field-input {
+    width: 100%;
+    min-height: 34px;
+    padding: 6px 10px;
+    border: 1px solid var(--color-line-strong);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- khung xương ---- */
+  .skeleton {
+    display: block;
+    height: 14px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #ecebe6 25%, #f6f5f2 50%, #ecebe6 75%);
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+  }
+
+  /* ---- mức rủi ro: hình dạng kèm màu ---- */
+  .risk-critical {
+    color: var(--color-critical);
+  }
+  .risk-serious {
+    color: var(--color-serious);
+  }
+  .risk-warning {
+    color: #d99500;
+  }
+
+  /* ---- thanh trượt ngưỡng ---- */
+  .tau-slider {
+    appearance: none;
+    display: block;
+    width: 100%;
+    height: 30px;
+    margin: 12px 0 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .tau-slider::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--color-grid);
+  }
+  .tau-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    margin-top: -8px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    border: 3px solid var(--color-surface);
+    box-shadow: 0 0 0 1px var(--color-accent), 0 1px 3px rgb(0 0 0 / 0.25);
+  }
+  .tau-slider::-moz-range-track {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--color-grid);
+  }
+  .tau-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    border: 3px solid var(--color-surface);
+    box-shadow: 0 0 0 1px var(--color-accent);
+  }
+  .tau-slider:focus-visible {
+    outline-offset: 4px;
+    border-radius: 6px;
+  }
+
+  /* ---- ngăn kéo chi tiết và hộp thoại (<dialog> mở bằng showModal) ---- */
+  dialog.drawer {
+    margin: 0 0 0 auto;
+    width: min(640px, 100vw);
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: none;
+    padding: 0;
+    border: 0;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-float);
+  }
+  dialog.drawer[open] {
+    display: flex;
+    flex-direction: column;
+    animation: drawer-in 0.18s ease-out;
+  }
+  dialog.modal {
+    width: min(960px, 96vw);
+    max-width: 96vw;
+    max-height: 90vh;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: var(--color-surface);
+    box-shadow: var(--shadow-float);
+  }
+  dialog.modal[open] {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- dòng phát lại ---- */
+  .feed-alert {
+    animation: var(--animate-feed-in), alert-pulse 1.4s ease-out;
+  }
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes alert-pulse {
+  0%,
+  35% {
+    background: #f8cfcc;
+  }
+  100% {
+    background: var(--color-critical-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

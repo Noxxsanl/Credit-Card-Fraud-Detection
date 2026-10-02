@@ -21,6 +21,7 @@ MODEL_PATH = MODELS_DIR / "model.joblib"
 EXPLAINER_PATH = MODELS_DIR / "explainer.joblib"
 METRICS_PATH = MODELS_DIR / "metrics.json"
 THRESHOLD_PATH = MODELS_DIR / "threshold.json"
+OOF_SCORES_PATH = MODELS_DIR / "oof_scores.npz"
 
 TARGET = "Class"
 

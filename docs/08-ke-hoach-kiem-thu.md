@@ -132,6 +132,40 @@ bằng mắt.
 | TC-54 | Ghi 10.000 dòng bằng `COPY` | Dưới 3 giây; đo kèm số liệu của `INSERT` từng dòng để đưa vào báo cáo |
 | TC-55 | `amount` đọc ra từ cơ sở dữ liệu là `Decimal` | Được ép về `float` trước khi vào `build_features()` (ST-07) |
 
+### 2.6 Trạng thái sau giai đoạn 7 (2026-09-28)
+
+| Ca | Tệp | Trạng thái |
+|---|---|---|
+| TC-30…TC-44 | `tests/test_api.py` | xanh; TC-42 có ba biến thể: mất cơ sở dữ liệu, thiếu hiện vật, hiện vật hỏng |
+| TC-45…TC-47 | `tests/test_db.py` | xanh; TC-47 chạy trên cơ sở dữ liệu riêng `fraud_test_migrations` |
+| TC-50…TC-55 | `tests/test_scoring.py` (tầng dịch vụ) và `tests/test_api.py` (qua HTTP) | xanh |
+| TC-12 | `tests/test_threshold_parity.py` | xanh từ giai đoạn 8 — xem §2.7 |
+
+Toàn bộ: 311 xanh, 1 bỏ qua. Máy không có PostgreSQL: 88 ca cần cơ sở dữ liệu tự bỏ qua.
+
+**Lệch khỏi §1.1:** giữa các ca, bảng được dọn bằng `TRUNCATE` rồi nạp lại ba khóa mặc định của
+`settings`, thay vì rollback. Ca kiểm thử API đi qua máy chủ thật, còn đường ghi `COPY` và chế
+độ phát lại tự mở giao dịch riêng, nên không bọc được trong một giao dịch ngoài. Dọn cả
+`settings` là cần thiết: một ca đổi `cost_fn` từng làm đỏ ca xem trước ngưỡng chạy sau nó.
+
+**Giới hạn của `TestClient`:** nó đọc hết thân phản hồi rồi mới trả, không stream thật. Ca phát lại
+trong pytest vì vậy chỉ phát giờ cuối của ngày 2 ở tốc độ 3.600 (khoảng 1 giây). AC-A6 (3 phút liên
+tục) kiểm trên uvicorn thật: 185 giây, 1.532 giao dịch, 0 lỗi.
+
+### 2.7 Trạng thái sau giai đoạn 8 (2026-09-28)
+
+| Ca | Tệp | Trạng thái |
+|---|---|---|
+| TC-12 | `tests/test_threshold_parity.py` | xanh cho **cả hai** bản giao diện (`web/threshold.js` và, từ khi có bản Next.js, `frontend/src/lib/threshold.mjs`): chạy chính tệp bằng Node, so với `src/threshold.py` trên 20 ngưỡng của tập kiểm thử thật (5 phương án của `threshold.json`, 5 điểm gian lận có thật, điểm cảnh báo nhỏ nhất và hai điểm lệch nó một ulp, hai đầu, ba lượng tử) và hai bộ dữ liệu tổng hợp có điểm trùng nhau đúng tại ngưỡng. TP/FP/FN/TN trùng tuyệt đối; precision, recall, F1, chi phí, cảnh báo/ngày trùng từng bit. Máy không có Node thì tự bỏ qua |
+| — | `tests/test_threshold_parity.py` | canh thêm: `index.html` nạp `threshold.js` và `app.js` gọi đúng `FraudThreshold.prepare`/`metricsAt`; mã của `frontend/src` nạp `threshold.mjs` và gọi `prepare`/`metricsAt`; không nơi nào tự so điểm với ngưỡng — TC-12 chỉ có nghĩa khi giao diện thật sự dùng hàm vừa kiểm |
+| — | `tests/test_artifacts.py` | 2 ca mới: đường PR sau khi rút mẫu giữ vùng precision cao (lỗi phát hiện qua UI-04, [lenh-chay-giai-doan-8 §5](lenh-chay-giai-doan-8.md)) |
+
+Toàn bộ: 323 xanh, 0 bỏ qua — TC-12 có 10 ca, 5 cho mỗi bản giao diện.
+
+Phần giao diện (AC-A1…AC-A3, AC-A5, T-55, T-56) kiểm bằng Puppeteer điều khiển Chrome thật trên API và
+PostgreSQL thật, không đưa vào pytest (cần trình duyệt và máy chủ đang chạy). Số đo ở
+[lenh-chay-giai-doan-8 §3](lenh-chay-giai-doan-8.md). AC-A9 mới thử sơ bộ; lượt đầy đủ thuộc T-61.
+
 ## 3. Kiểm chứng phương pháp
 
 Đây là phần không tự động hóa được hoàn toàn; làm theo danh sách kiểm.
