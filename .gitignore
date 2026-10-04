@@ -30,3 +30,6 @@ backup/
 # Diem out-of-fold cua luoi 20 to hop (~30 MB), sinh lai tu notebook 04
 reports/*.npz
 .claude
+# Kiem giao dien bang Chrome (scripts/ui)
+scripts/ui/node_modules/
+scripts/ui/shots/

@@ -1,0 +1,7 @@
+# Cài bằng `pip install --no-deps -r api/requirements-nodeps.txt` (api/Dockerfile).
+#
+# Trên Linux x86_64, gói xgboost khai báo phụ thuộc nvidia-nccl-cu12 (thư viện GPU, vài trăm MB)
+# dù API chỉ chạy CPU. --no-deps bỏ nó; hai phụ thuộc thật là numpy và scipy đã có trong
+# requirements.txt. Không dùng gói xgboost-cpu vì nó mang tên phân phối khác: api/loader.py so
+# phiên bản theo tên "xgboost" với metrics.json và sẽ cảnh báo lệch.
+xgboost==3.4.1

@@ -1,0 +1,21 @@
+# Mọi ảnh trong docker-compose.yml build từ gốc repo (context: .). Danh sách trắng:
+# chỉ những thư mục ảnh thật sự cần mới vào ngữ cảnh build. Đặc biệt data/ (dữ liệu thô
+# 150 MB), models/, .venv/, .env và node_modules/ không bao giờ lọt vào ảnh.
+*
+
+!alembic.ini
+!api/
+!src/
+!deploy/
+!web/
+!frontend/
+
+**/__pycache__
+**/*.pyc
+api/Dockerfile
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/tsconfig.tsbuildinfo
+frontend/Dockerfile
+web/Dockerfile

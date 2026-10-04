@@ -1,0 +1,12 @@
+{
+  "name": "fraud-console-ui-checks",
+  "private": true,
+  "description": "Kiểm giao diện trên Chrome thật (AC-A1…A3, A5, A9) — docs/lenh-chay.md §9.4",
+  "scripts": {
+    "flow": "node flow.js",
+    "keyboard": "node keyboard.js"
+  },
+  "dependencies": {
+    "puppeteer-core": "^23.11.1"
+  }
+}

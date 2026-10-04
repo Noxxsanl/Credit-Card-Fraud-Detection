@@ -256,8 +256,13 @@ cho phương án A.
 | Dịch vụ | Ảnh | Vai trò |
 |---|---|---|
 | `db` | `postgres:16-alpine` | Cơ sở dữ liệu, dữ liệu nằm trong volume có tên `pgdata` |
-| `api` | Build từ `./api` | FastAPI; chờ `db` khỏe rồi chạy `alembic upgrade head` trước khi phục vụ |
-| `web` | Build từ `./web` | Giao diện tĩnh |
+| `api` | Build từ `api/Dockerfile`, ngữ cảnh là gốc repo (cần `src/`) | FastAPI; chờ `db` khỏe rồi chạy `alembic upgrade head` trước khi phục vụ |
+| `web` | Build từ `frontend/Dockerfile` (Next.js, mặc định) hoặc `web/Dockerfile` (Alpine.js, `WEB_UI=web`) | nginx: phục vụ giao diện tĩnh và chuyển tiếp `/api/` sang `api` |
+
+Trình duyệt chỉ nói chuyện với nginx (cổng 3000): giao diện gọi API bằng đường dẫn tương đối
+`/api/v1`, nginx chuyển tiếp sang `api:8000`. Một origin nên không phụ thuộc CORS; luồng SSE của
+chế độ phát lại đi qua với `proxy_buffering off`. Cổng 8000 vẫn mở cho `/docs` và lúc phát triển.
+Cấu hình chung cho cả hai bản giao diện: `deploy/nginx.conf`.
 
 Thư mục `models/` và `data/` gắn dạng volume chỉ đọc vào `api`, không nướng vào
 image — nhờ vậy huấn luyện lại không phải build lại image. Dữ liệu PostgreSQL
@@ -268,7 +273,8 @@ nằm trong volume `pgdata`, tách khỏi cây thư mục repo.
 sàng nhận kết nối và migration sẽ thất bại ngay lần chạy đầu.
 
 Điều kiện nghiệm thu: chạy được toàn hệ thống bằng đúng một lệnh trên máy chỉ có
-Docker. Chi tiết tệp Compose ở [06 §7.1](06-thiet-ke-luu-tru.md).
+Docker. Chi tiết tệp Compose ở [06 §7.1](06-thiet-ke-luu-tru.md); vận hành và số đo khởi động ở
+[10 §4.1](10-van-hanh-tai-lap.md).
 
 ## 7. Cấu trúc mã nguồn mục tiêu
 
@@ -317,13 +323,21 @@ fraud-detection/
 │   │   ├── threshold.py
 │   │   ├── metrics.py
 │   │   └── replay.py
+│   ├── entrypoint.py         # alembic upgrade head → uvicorn (điểm vào của container)
+│   ├── requirements.txt      # thư viện lúc chạy, ghim đúng phiên bản lúc xuất hiện vật
 │   └── Dockerfile
 │
 ├── web/
 │   ├── index.html
 │   ├── app.js
 │   ├── styles.css
-│   └── Dockerfile
+│   └── Dockerfile            # bản Alpine.js: nginx phục vụ thẳng thư mục này
+│
+├── frontend/                 # bản Next.js (giai đoạn 8), bản đóng gói mặc định
+│   ├── src/
+│   └── Dockerfile            # node build ra out/ → nginx
+│
+├── deploy/nginx.conf         # nginx của dịch vụ web: tệp tĩnh + chuyển tiếp /api
 │
 ├── tests/
 │   ├── conftest.py           # fixture cơ sở dữ liệu kiểm thử
@@ -340,6 +354,7 @@ fraud-detection/
 ├── app.py                    # lưới an toàn: demo Streamlit (phương án A)
 ├── alembic.ini               # ở gốc để `alembic upgrade head` chạy từ gốc repo
 ├── docker-compose.yml        # db + api + web
+├── .dockerignore             # danh sách trắng cho ngữ cảnh build (gốc repo)
 ├── .env.example              # DATABASE_URL mẫu, commit được
 ├── requirements.txt
 └── README.md
@@ -356,7 +371,7 @@ notebook 02, 06, 07, 08. Kế hoạch bổ sung nằm ở [09](09-ke-hoach-trien
 | NFR-01 độ trễ | Mô hình nạp sẵn trong bộ nhớ; SHAP tách sang endpoint riêng |
 | NFR-02 thông lượng | Chấm điểm theo lô vector hóa, một lời gọi `predict_proba` cho cả DataFrame; ghi xuống cơ sở dữ liệu bằng `COPY` thay vì `INSERT` từng dòng |
 | NFR-03 thanh trượt | AR-03 — chỉ so sánh mảng điểm đã tính sẵn, không chạy lại mô hình |
-| NFR-04 khởi động | Hiện vật gắn volume, không tải gì qua mạng; nạp joblib mất 1–3 giây. Áp dụng cho lần chạy thứ hai trở đi — lần đầu PostgreSQL phải `initdb` và chạy migration, xem [06 §7.2](06-thiet-ke-luu-tru.md) |
+| NFR-04 khởi động | Hiện vật gắn volume, không tải gì qua mạng; nạp và kiểm hiện vật mất 2,3 giây; ảnh `api` biên dịch sẵn `.pyc` của cả thư viện chuẩn; healthcheck của `db` thăm mỗi giây lúc khởi động. Đo được: lần đầu 13,7–14,9 giây, các lần sau 11,1–11,5 giây ([06 §7.2](06-thiet-ke-luu-tru.md)) |
 | NFR-05 bộ nhớ | Tiến trình API chỉ giữ mô hình, explainer và mảng điểm của tập kiểm thử; container `db` tính riêng, khoảng 250 MB |
 | NFR-07 tái lập | `random_state=42` ở mọi bước ngẫu nhiên; ghim phiên bản thư viện |
 | NFR-11 truy vết | `model_version` lưu trong `threshold.json`, gắn vào mọi phản hồi và mọi dòng `transactions` |

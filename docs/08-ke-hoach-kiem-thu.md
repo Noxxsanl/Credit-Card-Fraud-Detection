@@ -158,13 +158,25 @@ tục) kiểm trên uvicorn thật: 185 giây, 1.532 giao dịch, 0 lỗi.
 |---|---|---|
 | TC-12 | `tests/test_threshold_parity.py` | xanh cho **cả hai** bản giao diện (`web/threshold.js` và, từ khi có bản Next.js, `frontend/src/lib/threshold.mjs`): chạy chính tệp bằng Node, so với `src/threshold.py` trên 20 ngưỡng của tập kiểm thử thật (5 phương án của `threshold.json`, 5 điểm gian lận có thật, điểm cảnh báo nhỏ nhất và hai điểm lệch nó một ulp, hai đầu, ba lượng tử) và hai bộ dữ liệu tổng hợp có điểm trùng nhau đúng tại ngưỡng. TP/FP/FN/TN trùng tuyệt đối; precision, recall, F1, chi phí, cảnh báo/ngày trùng từng bit. Máy không có Node thì tự bỏ qua |
 | — | `tests/test_threshold_parity.py` | canh thêm: `index.html` nạp `threshold.js` và `app.js` gọi đúng `FraudThreshold.prepare`/`metricsAt`; mã của `frontend/src` nạp `threshold.mjs` và gọi `prepare`/`metricsAt`; không nơi nào tự so điểm với ngưỡng — TC-12 chỉ có nghĩa khi giao diện thật sự dùng hàm vừa kiểm |
-| — | `tests/test_artifacts.py` | 2 ca mới: đường PR sau khi rút mẫu giữ vùng precision cao (lỗi phát hiện qua UI-04, [lenh-chay-giai-doan-8 §5](lenh-chay-giai-doan-8.md)) |
+| — | `tests/test_artifacts.py` | 2 ca mới: đường PR sau khi rút mẫu giữ vùng precision cao (lỗi phát hiện qua UI-04, [lenh-chay §8.5](lenh-chay.md)) |
 
 Toàn bộ: 323 xanh, 0 bỏ qua — TC-12 có 10 ca, 5 cho mỗi bản giao diện.
 
 Phần giao diện (AC-A1…AC-A3, AC-A5, T-55, T-56) kiểm bằng Puppeteer điều khiển Chrome thật trên API và
 PostgreSQL thật, không đưa vào pytest (cần trình duyệt và máy chủ đang chạy). Số đo ở
-[lenh-chay-giai-doan-8 §3](lenh-chay-giai-doan-8.md). AC-A9 mới thử sơ bộ; lượt đầy đủ thuộc T-61.
+[lenh-chay §8.3](lenh-chay.md). AC-A9 mới thử sơ bộ; lượt đầy đủ thuộc T-61.
+
+### 2.8 Trạng thái sau giai đoạn 9 (2026-10-02)
+
+| Ca | Tệp | Trạng thái |
+|---|---|---|
+| — | `tests/test_packaging.py` | 12 ca, không cần Docker: `api/requirements*.txt` ghim bằng `==` và **trùng** `metrics.json → environment.packages`; xgboost chỉ nằm trong tệp `--no-deps`; mọi gói của container có trong `requirements.txt` gốc; `api/entrypoint.py` thử lại migration khi PostgreSQL từ chối kết nối, dừng khi hết lượt, không thử lại lỗi của chính migration; compose đủ 3 dịch vụ, `api` chờ `db` khỏe, healthcheck của `db` qua TCP, hiện vật gắn chỉ đọc; `.dockerignore` là danh sách trắng không chứa `data/`, `models/`, `.env` |
+
+Toàn bộ: 335 xanh, 0 bỏ qua.
+
+Hai kịch bản Puppeteer của giai đoạn 8 nay nằm trong repo (`scripts/ui/flow.js` 21 bước, thêm
+`scripts/ui/keyboard.js` 24 bước cho AC-A9), vẫn ngoài pytest vì cần Chrome và hệ thống đang chạy.
+Kết quả trên hệ thống đóng gói: §4.4.
 
 ## 3. Kiểm chứng phương pháp
 
@@ -243,14 +255,33 @@ bởi một thao tác không ổn định.
 | AC-D4 | Mọi biểu đồ có tiêu đề, nhãn trục, đơn vị | Có |
 | AC-D5 | Ghi nguồn dữ liệu và giấy phép DbCL v1.0 | Có |
 
+### 4.4 Kết quả nghiệm thu phần ứng dụng (T-61, 2026-10-02)
+
+Kiểm trên **hệ thống đóng gói** — bản sao sạch của repo chạy bằng `docker compose up --build` — đi qua
+đúng đường của người dùng: Chrome 154 → nginx (cổng 3000) → `api` → PostgreSQL. Lệnh và số đo chi tiết:
+[lenh-chay §9.3–§9.4](lenh-chay.md).
+
+| Mã | Cách kiểm | Kết quả | Đạt |
+|---|---|---|---|
+| AC-A1 | `flow.js`: tải `data/giao-dich-10000.csv` qua nút "Tải CSV" | 3,1 giây tới lúc hiện kết quả | Có |
+| AC-A2 | `flow.js`: điểm của 25 dòng trang đầu | giảm dần | Có |
+| AC-A3 | `flow.js`: 21 lần kéo 0,5 → τ\*, đo tới khi vẽ xong hai khung hình | lâu nhất 43–131 ms qua 4 lượt | Có |
+| AC-A4 | `flow.js`: ngăn kéo UI-02 | 5 dương + 3 âm, chú thích PCA, nhãn thật ẩn tới khi quyết định. "Đúng 5 và 3" hiểu là "khi mô hình có đủ" — 77% giao dịch điểm thấp có ít hơn 5 yếu tố dương ([05 §7](05-thiet-ke-api.md)) | Có |
+| AC-A5 | `flow.js`: chi phí bỏ lọt 122,21 → 600 EUR | ngưỡng tối ưu 0,02317 → 0,002262 | Có |
+| AC-A6 | đọc `/replay/stream` qua nginx 185 giây | 1.605 giao dịch, 14 cảnh báo, 0 lỗi, khoảng lặng dài nhất 1,0 s | Có |
+| AC-A7 | ghi 2 kết luận, `docker compose restart`, đọc lại qua API và `SELECT … FROM reviews` | còn nguyên, cùng `threshold_used`; cũng còn sau `pg_restore` | Có |
+| AC-A8 | bản sao sạch (chỉ tệp git + 7 hiện vật), dự án Compose và volume mới | một lệnh dựng cả hệ thống; cold 13,7–14,9 s, warm 11,1–11,5 s. **Giới hạn:** cùng máy vật lý, ảnh nền có sẵn trong bộ đệm, cổng PostgreSQL đổi thành 5434 | Có, kèm giới hạn |
+| AC-A9 | `keyboard.js` (24 bước) + Lighthouse | 24/24; Lighthouse Accessibility 100, Best Practices 100 trên 4 màn hình. Tab và Enter cho mọi thao tác; phím mũi tên trong ba nhóm có một điểm dừng Tab (bảng hàng đợi, thanh trượt, nhóm radio — mẫu WAI-ARIA) | Có |
+| AC-A10 | 13 đầu vào sai gửi qua nginx | đúng mã HTTP và mã lỗi JSON: 422 ×8 (thân rỗng, không phải JSON, thiếu cột, sai kiểu, `Amount` âm, ngưỡng 1,5, hai tệp CSV hỏng), 400 ×2, 404, 405, và 413 do nginx trả cho tệp 115 MB; `RestartCount` của container vẫn 0 | Có |
+
 ## 5. Danh sách kiểm trước buổi bảo vệ
 
 - [ ] Chạy `pytest` — toàn bộ xanh.
 - [ ] `docker compose down -v` rồi `docker compose up` trên máy sạch — lần đầu dưới 45 giây, lần thứ hai dưới 15 giây (NFR-04).
 - [ ] Khởi động hệ thống một lần **trước** buổi bảo vệ để volume `pgdata` đã sẵn sàng.
-- [ ] Chuẩn bị sẵn bản `pg_dump` dữ liệu demo để khôi phục nếu có sự cố ([06 §7.4](06-thiet-ke-luu-tru.md)).
+- [ ] Chuẩn bị sẵn bản `pg_dump` dữ liệu demo để khôi phục nếu có sự cố: `python scripts/demo_db.py seed` rồi `dump`; khôi phục bằng `restore`, khoảng 2,5 giây ([06 §7.4](06-thiet-ke-luu-tru.md)).
 - [ ] Mở cả bốn màn hình, không có lỗi trong console trình duyệt.
-- [ ] Kịch bản trình bày ngưỡng (kéo 0,5 → 0,047) chạy mượt.
+- [ ] Kịch bản trình bày ngưỡng (kéo 0,5 → τ\* = 0,0232) chạy mượt — số thật ở [lenh-chay §8.3](lenh-chay.md).
 - [ ] Chuẩn bị sẵn 4 giao dịch mẫu: gian lận dễ, gian lận khó, hợp lệ dễ, hợp lệ khó.
 - [ ] Có phương án dự phòng khi mạng hoặc máy chiếu hỏng: ảnh chụp màn hình và bản PDF báo cáo.
 - [ ] Ôn ba câu hỏi chắc chắn bị hỏi:

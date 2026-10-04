@@ -273,7 +273,7 @@ Giai đoạn 8 (2026-09-28). Mã nằm trong `web/`: `index.html` (khung và b�
 (trạng thái Alpine, gọi API), `threshold.js` (UI-D1), `charts.js` (Chart.js), `styles.css`,
 `config.js` (địa chỉ API). Alpine.js 3.17.4 và Chart.js 4.5.1 **chép vào `web/vendor/`**, không nạp
 từ CDN: buổi bảo vệ không được phụ thuộc mạng (NFR-08). Lệnh chạy:
-[lenh-chay-giai-doan-8.md](lenh-chay-giai-doan-8.md).
+[lenh-chay §8](lenh-chay.md).
 
 | Màn hình | Điểm | Lý do |
 |---|---|---|
@@ -308,7 +308,7 @@ từ CDN: buổi bảo vệ không được phụ thuộc mạng (NFR-08). Lện
 Viết sau bản `web/`, theo nhánh "Next.js + React + Tailwind + Recharts" mà [03 §6.2](03-thiet-ke-kien-truc.md)
 để ngỏ. Hai bản cùng gọi một API, cùng quy tắc định dạng số, cùng các quyết định ở §12; bản `web/`
 giữ lại làm phương án dự phòng cho buổi bảo vệ. Cách chạy: [frontend/README.md](../frontend/README.md)
-và [lenh-chay-giai-doan-8 §6](lenh-chay-giai-doan-8.md).
+và [lenh-chay §8.6](lenh-chay.md).
 
 | Điểm | Bản `web/` (Alpine.js) | Bản `frontend/` (Next.js) |
 |---|---|---|
@@ -322,4 +322,9 @@ và [lenh-chay-giai-doan-8 §6](lenh-chay-giai-doan-8.md).
 | Kiểm tra tĩnh | — | `tsc --noEmit`, ESLint gồm các luật React Compiler, không tắt luật nào |
 
 Bẫy riêng của bản này (Next.js 16.3 trên Windows ghi sai tên tệp tải trước khi xuất tĩnh; React
-Compiler hiểu nhầm trường `threshold.current` là `ref.current`): [lenh-chay-giai-doan-8 §5](lenh-chay-giai-doan-8.md).
+Compiler hiểu nhầm trường `threshold.current` là `ref.current`): [lenh-chay §8.5](lenh-chay.md).
+
+**Đóng gói (giai đoạn 9):** `docker compose up` đóng gói bản Next.js; `WEB_UI=web` đổi sang bản `web/`,
+build không cần npm. Trong Compose cả hai gọi API qua đường dẫn tương đối `/api/v1` mà nginx chuyển
+tiếp ([03 §6.3](03-thiet-ke-kien-truc.md)). Trên bản đóng gói, kịch bản bàn phím `scripts/ui/keyboard.js`
+đạt 24/24 và Lighthouse cho Accessibility 100 ở cả bốn màn hình (AC-A9, [08 §4.4](08-ke-hoach-kiem-thu.md)).

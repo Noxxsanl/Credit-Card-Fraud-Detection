@@ -24,15 +24,122 @@ fraud-detection/
 ├── models/                      # hiện vật do notebook 08 sinh: model.joblib, explainer.joblib,
 │                                #   metrics.json, threshold.json
 ├── reports/                     # figures/ và bao-cao.md
-├── api/                         # FastAPI + PostgreSQL (phương án B, giai đoạn 7)
-├── web/                         # giao diện 4 màn hình, HTML + Alpine.js + Chart.js (giai đoạn 8)
-├── frontend/                    # cùng giao diện, bản Next.js + TypeScript + Tailwind + Recharts
+├── api/                         # FastAPI + PostgreSQL (phương án B, giai đoạn 7) — kèm Dockerfile
+├── frontend/                    # giao diện 4 màn hình, Next.js + TypeScript + Tailwind + Recharts (bản đóng gói mặc định)
+├── web/                         # cùng giao diện, bản HTML + Alpine.js + Chart.js (dự phòng)
+├── deploy/nginx.conf            # nginx của dịch vụ web: tệp tĩnh + chuyển tiếp /api
+├── docker-compose.yml           # db + api + web — cả hệ thống bằng một lệnh (giai đoạn 9)
+├── scripts/                     # tải dữ liệu, lưới, tái lập, dữ liệu demo, bấm giờ, kiểm giao diện
 ├── tests/                       # pytest
 ├── app.py                       # demo Streamlit (phương án A, dự phòng)
 └── requirements.txt
 ```
 
-## Cài đặt
+## Chạy lại từ đầu trên máy sạch
+
+Cách nhanh nhất để xem hệ thống chạy: **chỉ cần Git và Docker**. Không cần Python, Node.js hay
+PostgreSQL trên máy, không cần tệp `.env`.
+
+### Bước 1 — Cài đặt
+
+- [Git](https://git-scm.com/downloads).
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Docker Engine 25 trở lên), **bật
+  lên** trước khi chạy lệnh. Trên Windows, Docker Desktop cần WSL 2 — trình cài đặt tự hướng dẫn.
+- Máy có ít nhất 4 GB RAM trống cho Docker và khoảng 3 GB ổ đĩa cho các ảnh.
+
+### Bước 2 — Lấy mã nguồn
+
+```bash
+git clone https://github.com/Noxxsanl/Credit-Card-Fraud-Detection.git fraud-detection
+cd fraud-detection
+```
+
+### Bước 3 — Đặt hiện vật mô hình vào chỗ
+
+API không huấn luyện; nó nạp 7 tệp do notebook 08 xuất ra. Hai tệp `.json` đã có trong git, năm tệp còn
+lại không (dung lượng, và chúng sinh lại được):
+
+```
+models/model.joblib   models/explainer.joblib   models/oof_scores.npz
+models/metrics.json   models/threshold.json            ← có sẵn trong git
+data/test_set.parquet data/sample_pool.json
+```
+
+**Cách A — có gói hiện vật** (`hien-vat.tgz`, nộp kèm bài hoặc chép từ máy đã chạy notebook). Đặt tệp ở
+gốc repo rồi giải nén — `tar` có sẵn trên Windows 10 trở lên, macOS và Linux:
+
+```bash
+tar -xzf hien-vat.tgz
+```
+
+Tạo gói này trên máy đã có hiện vật:
+
+```bash
+tar -czf hien-vat.tgz models/model.joblib models/explainer.joblib models/oof_scores.npz models/metrics.json models/threshold.json data/test_set.parquet data/sample_pool.json
+```
+
+**Cách B — tự tạo hiện vật** (cần Python 3.12, khoảng 20 phút cộng thời gian tải 150 MB dữ liệu):
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate                          # Windows; macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+python scripts/download_data.py --mirror        # hoặc qua Kaggle API, xem docs/10 §2.4
+jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=3600 notebooks/03_baseline.ipynb
+jupyter nbconvert --to notebook --execute --inplace --ExecutePreprocessor.timeout=3600 notebooks/08_export_artifacts.ipynb
+pytest tests/test_artifacts.py                  # kiểm chính các tệp vừa sinh
+```
+
+Notebook 08 đối chiếu từng con số với các bảng `reports/*.csv` của lần chạy gốc và dừng nếu lệch. Trên
+máy có số lõi khác 12, XGBoost có thể cho điểm lệch nhẹ theo số luồng ([docs/10 §6](docs/10-van-hanh-tai-lap.md))
+và notebook dừng ở bước đối chiếu — khi đó dùng cách A. Chạy lại toàn bộ 01 → 08: [docs/10 §3](docs/10-van-hanh-tai-lap.md).
+
+### Bước 4 — Chạy
+
+```bash
+docker compose up --build -d
+```
+
+Lần đầu Docker tải ảnh nền và build hai ảnh, khoảng **4–5 phút** (cần Internet). Sau đó hệ thống tự khởi
+động theo thứ tự: PostgreSQL → API dựng lược đồ (`alembic upgrade head`) và nạp mô hình → giao diện.
+Khoảng 15 giây sau khi build xong, lệnh sau phải cho `api` ở trạng thái `(healthy)`:
+
+```bash
+docker compose ps
+```
+
+| Địa chỉ | Nội dung |
+|---|---|
+| http://localhost:3000 | Giao diện: hàng đợi, ngưỡng, hiệu năng mô hình, phát lại |
+| http://localhost:8000/docs | Tài liệu API, thử từng endpoint |
+
+Hàng đợi lúc đầu rỗng; giao diện hướng dẫn ba cách nạp dữ liệu (tải CSV, thư viện mẫu, phát lại ngày 2).
+Có Python thì nạp sẵn một bộ dữ liệu demo bằng `python scripts/demo_db.py seed`
+([docs/lenh-chay §9.5](docs/lenh-chay.md)).
+
+### Dừng và chạy lại
+
+```bash
+docker compose down          # dừng; dữ liệu (giao dịch, kết luận thẩm định) vẫn giữ trong volume pgdata
+docker compose up -d         # chạy lại, không build lại — khoảng 11 giây
+docker compose down -v       # dừng và XÓA toàn bộ dữ liệu ứng dụng
+docker compose restart api   # sau khi chạy lại notebook 08, để API nạp hiện vật mới
+```
+
+### Khi gặp lỗi
+
+| Triệu chứng | Cách xử lý |
+|---|---|
+| `failed to connect to the docker API` | Docker Desktop chưa bật |
+| `port is already allocated` (5432, 8000 hoặc 3000) | Máy đã có chương trình khác ở cổng đó. Tạo tệp `.env` ở gốc repo với `POSTGRES_HOST_PORT=5433` (hoặc `API_HOST_PORT=8001`, `WEB_HOST_PORT=3001`), chạy lại |
+| `api` không lên `(healthy)`, giao diện báo "Chưa nạp được hiện vật mô hình" | Thiếu hoặc sai hiện vật ở bước 3: `docker compose logs api` ghi rõ tệp nào |
+| Giao diện báo "API chưa sẵn sàng" trong vài giây đầu | Bình thường: API đang nạp mô hình. Giao diện tự thử lại mỗi 15 giây |
+| Build lỗi ở `npm ci` (mạng chặn npm) | Dùng bản giao diện không cần build: `WEB_UI=web docker compose up --build -d` (PowerShell: `$env:WEB_UI="web"` trước lệnh) |
+
+Đủ lệnh, số đo khởi động và kết quả nghiệm thu: [docs/lenh-chay §9](docs/lenh-chay.md).
+Vận hành chi tiết: [docs/10 §4.1](docs/10-van-hanh-tai-lap.md).
+
+## Cài đặt môi trường Python (notebook, kiểm thử, phát triển)
 
 ```bash
 python -m venv .venv
@@ -87,7 +194,9 @@ Lưới an toàn vẫn giữ: nếu giai đoạn 7–8 trễ tới mức đe do�
 **phương án A** — Streamlit trong `app.py`, rút gọn giao diện và dồn thời gian cho báo cáo. Khi đó
 `app.py` phải đổi sang nạp `models/model.joblib` (hiện vẫn trỏ tới `best_model.pkl` cũ).
 
-## Chạy API và giao diện (phương án B)
+## Chạy khi phát triển (không đóng gói)
+
+Chạy API và giao diện trực tiếp trên máy để sửa mã và tải lại ngay; PostgreSQL vẫn trong Docker.
 
 ```bash
 cp .env.example .env                # chỉnh POSTGRES_HOST_PORT nếu cổng 5432 đã bị chiếm
@@ -105,7 +214,7 @@ cd frontend && npm install && npm run dev
 
 Cần có hiện vật trong `models/` (chạy notebook 08). Giao diện là tệp tĩnh (Alpine.js + Chart.js nằm sẵn
 trong `web/vendor/`), không cần Node.js hay `npm install`. Chi tiết ở
-[docs/10 §4.2](docs/10-van-hanh-tai-lap.md) và [docs/lenh-chay-giai-doan-8.md](docs/lenh-chay-giai-doan-8.md).
+[docs/10 §4.2](docs/10-van-hanh-tai-lap.md) và [docs/lenh-chay §8](docs/lenh-chay.md).
 
 ## Chạy demo Streamlit (phương án A, dự phòng)
 

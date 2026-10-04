@@ -1,11 +1,19 @@
-# Hệ thống chạy bằng một lệnh: docker compose up (docs/06 §7.1, docs/10 §4).
+# Cả hệ thống bằng một lệnh (docs/03 §6.3, docs/06 §7.1, docs/10 §4.1):
 #
-# Giai đoạn 7 mới có dịch vụ db — dựng TRƯỚC khi viết route (rủi ro R-09). Hai dịch
-# vụ api và web thêm ở giai đoạn 9 (T-58).
+#     docker compose up --build          # lần đầu: build ảnh vài phút, rồi khởi động
+#     docker compose up                  # các lần sau
 #
-# Cổng máy chủ đọc từ POSTGRES_HOST_PORT trong .env, mặc định 5432. Máy đã có một
-# PostgreSQL khác chiếm 5432 thì đặt POSTGRES_HOST_PORT=5433 và sửa DATABASE_URL
-# tương ứng (docs/10 §2.3).
+#     Giao diện → http://localhost:3000     API → http://localhost:8000/docs
+#
+# Thứ tự: db khỏe (pg_isready) → api chạy `alembic upgrade head`, nạp hiện vật → /health 200.
+# web không phải chờ: giao diện thăm /health mỗi 15 giây và tự hiện dải báo lỗi tới khi api lên.
+#
+# Cần có hiện vật trước (notebook 08): models/*.joblib, models/*.json, models/oof_scores.npz,
+# data/test_set.parquet, data/sample_pool.json. Chúng được gắn chỉ đọc, không nằm trong ảnh.
+#
+# Cổng trên máy chủ đọc từ biến môi trường hoặc .env — đổi khi cổng đã bị chiếm:
+#   POSTGRES_HOST_PORT (mặc định 5432), API_HOST_PORT (8000), WEB_HOST_PORT (3000).
+# Bản giao diện: WEB_UI=frontend (Next.js, mặc định) hoặc WEB_UI=web (HTML + Alpine.js).
 
 services:
   db:
@@ -19,12 +27,53 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
+      # Để psql, pytest và uvicorn chạy trên máy nối vào khi phát triển (docs/10 §4.2)
       - "${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U fraud -d fraud"]
+      # -h 127.0.0.1: kiểm qua TCP. Lúc initdb, máy chủ tạm của postgres chỉ nghe socket Unix rồi
+      # tắt đi khởi động lại — kiểm qua socket sẽ báo khỏe sớm, đúng lúc nó sắp tắt.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fraud -d fraud"]
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 30s
+      start_interval: 1s     # trong 30 giây đầu thăm mỗi giây: api không phải chờ thừa (NFR-04)
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://fraud:fraud@db:5432/fraud
+      # Chỉ dùng khi gọi thẳng cổng 8000 từ trình duyệt; qua cổng 3000 thì nginx chuyển tiếp,
+      # cùng origin, không cần CORS
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - ./models:/app/models:ro
+      - ./data:/app/data:ro
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    healthcheck:
+      # urlopen ném lỗi với 503, nên "khỏe" nghĩa là đã nạp hiện vật VÀ nối được db (API-01)
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 1s
+
+  web:
+    build:
+      context: .
+      dockerfile: ${WEB_UI:-frontend}/Dockerfile
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_HOST_PORT:-3000}:80"
 
 volumes:
   pgdata:

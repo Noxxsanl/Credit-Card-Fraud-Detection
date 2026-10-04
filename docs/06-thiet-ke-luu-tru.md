@@ -480,6 +480,9 @@ thay vì cố nạp.
 
 ### 7.1 Dịch vụ trong Docker Compose
 
+Trích phần liên quan tới lưu trữ của `docker-compose.yml` (tệp đầy đủ có thêm dịch vụ `web` và
+healthcheck của `api` — [10 §4.1](10-van-hanh-tai-lap.md)):
+
 ```yaml
 services:
   db:
@@ -489,18 +492,24 @@ services:
       POSTGRES_PASSWORD: fraud
       POSTGRES_DB:       fraud
       TZ:                UTC
+      PGTZ:              UTC
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"          # để nối bằng psql hoặc DBeaver khi phát triển
+      - "${POSTGRES_HOST_PORT:-5432}:5432"   # để nối bằng psql, pytest, uvicorn khi phát triển
     healthcheck:
-      test:     ["CMD-SHELL", "pg_isready -U fraud -d fraud"]
+      # qua TCP: lúc initdb, máy chủ tạm chỉ nghe socket Unix rồi tắt — kiểm qua socket báo khỏe quá sớm
+      test:     ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U fraud -d fraud"]
       interval: 5s
       timeout:  3s
       retries:  10
+      start_period:   30s
+      start_interval: 1s     # 30 giây đầu thăm mỗi giây, api không chờ thừa
 
   api:
-    build: ./api
+    build:
+      context: .                     # gốc repo: ảnh cần cả src/
+      dockerfile: api/Dockerfile
     depends_on:
       db:
         condition: service_healthy
@@ -510,11 +519,14 @@ services:
       - ./models:/app/models:ro
       - ./data:/app/data:ro
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-8000}:8000"
 
 volumes:
   pgdata:
 ```
+
+Entrypoint của `api` (`api/entrypoint.py`) chạy `alembic upgrade head` trước uvicorn và thử lại tối
+đa 30 lần, mỗi lần cách 1 giây, nếu PostgreSQL chưa nhận kết nối.
 
 Dữ liệu nằm trong **volume có tên** `pgdata`, không phải thư mục `data/` của repo —
 nhờ vậy không lẫn với hiện vật mô hình và không bao giờ lọt vào git.
@@ -525,13 +537,16 @@ biến môi trường trong tệp `.env` không commit.
 
 ### 7.2 Thời gian khởi động
 
-| Lần chạy | Thời gian tới khi `/health` trả 200 |
-|---|---|
-| Lần đầu (initdb + migration) | 20–40 giây |
-| Các lần sau (volume đã có dữ liệu) | 8–12 giây |
+| Lần chạy | Dự kiến lúc thiết kế | Đo được (giai đoạn 9, 3 lần mỗi loại) |
+|---|---|---|
+| Lần đầu (initdb + migration) | 20–40 giây | 13,7–14,9 giây |
+| Các lần sau (volume đã có dữ liệu) | 8–12 giây | 11,1–11,5 giây |
 
-NFR-04 (< 15 giây) áp dụng cho lần chạy thứ hai trở đi. Ghi rõ điều này khi
-nghiệm thu AC-A8, và khi trình diễn thì khởi động trước một lần.
+NFR-04 (< 15 giây) áp dụng cho lần chạy thứ hai trở đi. Lần đầu nhanh hơn dự kiến vì `initdb` của
+`postgres:16-alpine` cộng hai migration chỉ thêm khoảng 3 giây; các lần sau chậm hơn dự kiến vì phần lớn thời gian là
+Python import thư viện (3,7 giây) và nạp hiện vật (2,3 giây), không phải cơ sở dữ liệu. Thời gian
+build ảnh không tính. Khi trình diễn vẫn nên khởi động trước một lần. Cách đo:
+[lenh-chay §9.3](lenh-chay.md).
 
 ### 7.3 Đặt lại trạng thái demo
 
@@ -550,12 +565,24 @@ xóa cả ngưỡng thì thêm `settings` vào danh sách `TRUNCATE`.
 ### 7.4 Sao lưu và khôi phục
 
 ```bash
-docker compose exec db pg_dump -U fraud -d fraud -Fc > backup/fraud.dump
-docker compose exec -T db pg_restore -U fraud -d fraud --clean < backup/fraud.dump
+python scripts/demo_db.py dump       # → backup/fraud-demo.dump
+python scripts/demo_db.py restore    # khôi phục, bấm giờ
+
+# Không có Python — đúng các lệnh mà kịch bản gọi:
+docker compose exec -T db pg_dump -U fraud -d fraud -Fc -f /tmp/fraud-demo.dump
+docker compose cp db:/tmp/fraud-demo.dump backup/fraud-demo.dump
+docker compose cp backup/fraud-demo.dump db:/tmp/fraud-demo.dump
+docker compose exec -T db pg_restore -U fraud -d fraud --clean --if-exists --single-transaction --no-owner /tmp/fraud-demo.dump
 ```
 
-Đáng làm một lần trước buổi bảo vệ: chuẩn bị sẵn một bản dump có dữ liệu demo đẹp
-(đã tải CSV, đã thẩm định vài giao dịch) để khôi phục trong vài giây nếu có sự cố.
+Tệp dump ghi **trong** container rồi chép ra bằng `docker compose cp`, không chuyển hướng `>`:
+PowerShell 5.1 coi đầu ra của chương trình là văn bản và mã hóa lại, bản dump nhị phân hỏng.
+`--single-transaction` giữ nguyên cơ sở dữ liệu nếu khôi phục lỗi giữa chừng.
+
+Bản dump dữ liệu demo của buổi bảo vệ tạo bằng `python scripts/demo_db.py seed` rồi `dump` (T-60): 3,0 MB,
+10.179 giao dịch, 8 kết luận thẩm định. Khôi phục mất 2,3–2,4 giây, cả khi chỉ mất dữ liệu lẫn khi mất
+hẳn volume (`down -v` → `up` → `restore`); API phục vụ tiếp không cần khởi động lại, sequence cũng được
+khôi phục nên mã giao dịch mới không trùng.
 
 ### 7.5 Bảo trì
 

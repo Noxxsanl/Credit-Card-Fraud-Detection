@@ -21,4 +21,9 @@ Sinh lại:
 ```
 
 Hai tệp `.joblib` là pickle, chỉ nạp được với đúng phiên bản thư viện ghi trong
-`metrics.json → environment.packages`. Đổi phiên bản thì chạy lại notebook 08.
+`metrics.json → environment.packages`. Đổi phiên bản thì chạy lại notebook 08, và sửa
+`api/requirements.txt` cho khớp (`tests/test_packaging.py` báo đỏ nếu quên).
+
+Trong Docker Compose, thư mục này được gắn **chỉ đọc** vào container `api`. Xuất lại xong thì
+`docker compose restart api` để nạp, không phải build lại ảnh. Chép hiện vật sang máy khác:
+gói `hien-vat.tgz` ở [README](../README.md#chạy-lại-từ-đầu-trên-máy-sạch), bước 3.

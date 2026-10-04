@@ -10,7 +10,7 @@ viên mới, hoặc chính tác giả sau vài tháng.
 | Python | 3.11 hoặc 3.12 | Huấn luyện, API (môi trường hiện tại: 3.12.5) |
 | RAM | ≥ 8 GB | SMOTE trên 227.000 dòng |
 | Ổ đĩa trống | ≥ 2 GB | Dữ liệu và hiện vật |
-| Docker Desktop | Bản mới | Chạy `db`, `api`, `web` bằng Compose |
+| Docker Desktop | Docker Engine 25+ (healthcheck dùng `start_interval`) | Chạy `db`, `api`, `web` bằng Compose; khoảng 3 GB cho các ảnh |
 | PostgreSQL | 16 | Chỉ khi muốn chạy cơ sở dữ liệu trực tiếp thay vì trong Docker |
 | Tài khoản Kaggle | — | Tải dữ liệu |
 
@@ -51,7 +51,9 @@ TEST_DATABASE_URL=postgresql+psycopg://fraud:fraud@localhost:5432/fraud_test
 ```
 
 `POSTGRES_HOST_PORT` là cổng mà `docker-compose.yml` mở ra máy chủ. `docker compose` và API
-cùng đọc tệp `.env` này.
+cùng đọc tệp `.env` này. Ba biến nữa chỉ `docker compose` đọc: `API_HOST_PORT` (mặc định 8000),
+`WEB_HOST_PORT` (3000) và `WEB_UI` (`frontend` là bản Next.js, `web` là bản Alpine.js — §4.1).
+Chỉ chạy `docker compose up` thì không cần `.env`: mọi biến đều có giá trị mặc định.
 
 Trong Docker Compose, dịch vụ `api` dùng host `db` thay cho `localhost` — giá trị
 đó đã đặt sẵn trong `docker-compose.yml`, không cần sửa `.env`.
@@ -174,20 +176,48 @@ Notebook 08 phải chạy **sau** notebook 03: chạy lại 03 là ghi đè `tes
 ### 4.1 Docker Compose (khuyến nghị)
 
 ```bash
-docker compose up
-# Cơ sở dữ liệu → localhost:5432
-# API           → http://localhost:8000/docs
+docker compose up --build -d     # lần đầu: build hai ảnh khoảng 4 phút (cần Internet), rồi khởi động
+docker compose up -d             # các lần sau
+docker compose ps                # api phải (healthy)
 # Giao diện     → http://localhost:3000
+# API           → http://localhost:8000/docs
+# Cơ sở dữ liệu → localhost:5432 (POSTGRES_HOST_PORT)
 ```
 
-Thứ tự khởi động: `db` chạy trước, `api` chờ healthcheck `pg_isready` rồi tự chạy
-`alembic upgrade head` trước khi phục vụ. Không cần làm gì thủ công.
+Ba dịch vụ:
 
-Yêu cầu: `models/` và `data/` đã có hiện vật từ bước 3 — chúng được gắn dạng
-volume chỉ đọc, không nướng vào image.
+| Dịch vụ | Ảnh | Việc |
+|---|---|---|
+| `db` | `postgres:16-alpine` | dữ liệu trong volume `pgdata`; healthcheck `pg_isready -h 127.0.0.1` (qua TCP) |
+| `api` | build từ `api/Dockerfile` (ngữ cảnh: gốc repo, để có `src/`) | chờ `db` khỏe (`depends_on: service_healthy`) → `api/entrypoint.py` chạy `alembic upgrade head` → uvicorn một worker; healthcheck `/api/v1/health` |
+| `web` | build từ `frontend/Dockerfile` (mặc định) hoặc `web/Dockerfile` (`WEB_UI=web`) | nginx phục vụ tệp tĩnh và chuyển tiếp `/api/` sang `api:8000` (`deploy/nginx.conf`) |
 
-Lần chạy đầu tiên mất 20–40 giây vì PostgreSQL phải `initdb`; các lần sau còn
-8–12 giây ([06 §7.2](06-thiet-ke-luu-tru.md)).
+Yêu cầu: `models/` và `data/` đã có hiện vật từ bước 3 — chúng được gắn dạng volume **chỉ đọc**,
+không nướng vào ảnh. Chạy lại notebook 08 thì `docker compose restart api` là đủ, không build lại.
+
+Trình duyệt chỉ cần cổng 3000: giao diện gọi API bằng đường dẫn tương đối `/api/v1`, nginx chuyển
+tiếp, nên không phụ thuộc CORS và vẫn chạy khi mở bằng địa chỉ IP. Khi `api` đang khởi động hoặc đã
+dừng, nginx trả `503 API_UNAVAILABLE` theo mô hình lỗi của API và giao diện hiện dải báo lỗi tới khi
+API lên.
+
+Thời gian tới khi `/health` trả 200, đo bằng `scripts/time_startup.py` trên bản sao sạch của repo
+([lenh-chay §9.3](lenh-chay.md)):
+
+| Lần chạy | Đo được | NFR-04 |
+|---|---|---|
+| Lần đầu (volume trống: `initdb` + migration) | 13,7–14,9 giây | < 45 giây |
+| Các lần sau | 11,1–11,5 giây | < 15 giây |
+| `docker compose restart` | 10,0 giây | — |
+
+Đổi bản giao diện (bản Alpine.js build không cần npm — dùng khi mạng chặn npm):
+
+```bash
+WEB_UI=web docker compose up --build -d             # Git Bash
+$env:WEB_UI="web"; docker compose up --build -d     # PowerShell
+```
+
+Dữ liệu demo, sao lưu và khôi phục: `scripts/demo_db.py` ([lenh-chay §9.5](lenh-chay.md),
+[06 §7.4](06-thiet-ke-luu-tru.md)).
 
 Dừng và đặt lại trạng thái:
 
@@ -195,8 +225,8 @@ Dừng và đặt lại trạng thái:
 docker compose down                 # dừng, GIỮ nguyên dữ liệu trong volume pgdata
 docker compose down -v              # dừng và XÓA volume — mất toàn bộ dữ liệu ứng dụng
 
-# Hoặc chỉ xóa dữ liệu, giữ lược đồ và ngưỡng đã chọn:
-docker compose exec db psql -U fraud -d fraud \n  -c "TRUNCATE transactions, reviews RESTART IDENTITY CASCADE;"
+# Hoặc chỉ xóa dữ liệu, giữ lược đồ và tham số chi phí (xóa cả ngưỡng người dùng đặt):
+python scripts/demo_db.py reset
 ```
 
 ### 4.2 Chạy trực tiếp khi phát triển
@@ -212,7 +242,7 @@ Mở giao diện ở `http://localhost:3000`, không mở thẳng `web/index.htm
 `http://localhost:3000` và `http://127.0.0.1:3000` (CORS). Giao diện không tải gì từ Internet —
 Alpine.js và Chart.js nằm trong `web/vendor/` (NFR-08). Chạy lại notebook 08 thì phải khởi động lại
 uvicorn để nạp `metrics.json` mới. Lệnh chi tiết và cách nạp dữ liệu demo:
-[lenh-chay-giai-doan-8.md](lenh-chay-giai-doan-8.md).
+[lenh-chay §8](lenh-chay.md).
 
 Bản Next.js của giao diện (`frontend/`, cần Node.js 20.9+) thay cho dòng `http.server` ở trên — cùng cổng
 3000 nên chạy một trong hai:
@@ -270,6 +300,8 @@ Chạy `pytest` trước mỗi commit. Chi tiết các ca ở
 | Phiên bản thư viện | `requirements.txt` dùng `>=`; khi nộp bài, xuất bản ghim chính xác bằng `pip freeze > requirements.lock.txt` |
 | Thứ tự dữ liệu | Không `shuffle` ngoài các chỗ đã ghim seed |
 | Song song hóa | XGBoost `tree_method="hist"` cho điểm **lệch nhẹ theo số luồng** (thứ tự cộng dồn histogram thay đổi): cùng cấu hình chạy `n_jobs=1` và `n_jobs=-1` khác nhau ở chữ số thứ ba–tư của xác suất. Trên cùng một máy thì tái lập tuyệt đối. Khi kiểm tra tái lập (T-38) trên máy khác, ghi lại số lõi; nếu lệch vượt 0,001 thì ghim `n_jobs` cố định. Phát hiện ở giai đoạn 4, xem `tests/test_search.py` |
+| Hệ điều hành | Huấn luyện trên Windows, phục vụ trong container Linux: cùng `model.joblib`, cùng xgboost 3.4.1, 35/56.746 giao dịch của tập kiểm thử cho điểm lệch **1 ulp float32** (lớn nhất 1,5·10⁻¹¹, đều ở vùng điểm ~10⁻⁶), **0** quyết định bị lật ở τ\* và 0,5. "Trùng từng bit" chỉ đúng trên cùng hệ điều hành; `api/loader.py` chấm lại 1/50 tập kiểm thử với dung sai 10⁻⁶ nên vẫn qua. Đo ở giai đoạn 9 |
+| Thư viện trong container | `api/requirements.txt` ghim **đúng** phiên bản của `metrics.json → environment.packages`; `tests/test_packaging.py` báo đỏ nếu hai bên lệch. Huấn luyện lại bằng bản khác thì sửa tệp này rồi `docker compose build api` |
 | Phiên bản mô hình | `model_version` ghi trong `threshold.json` và gắn vào mọi phản hồi API |
 
 Quy trình kiểm tra tái lập (T-38) đã viết thành một lệnh:
@@ -290,7 +322,7 @@ Script **không** chạy lại `scripts/run_grid.py` và `scripts/run_search.py`
 được chọn và so với điểm lưu của lưới.
 
 Lần kiểm tra 2026-09-27 (12 lõi): chạy lại 01 → 08 mất 71 phút, PR-AUC lệch **0**, dấu vân tay điểm
-và cả 11 bảng `reports/*.csv` trùng hoàn toàn. Chi tiết ở [lệnh chạy giai đoạn 6 §4](lenh-chay-giai-doan-6.md).
+và cả 11 bảng `reports/*.csv` trùng hoàn toàn. Chi tiết ở [lệnh chạy §6.4](lenh-chay.md).
 
 Nếu lệch lớn hơn, tìm theo thứ tự: bước ngẫu nhiên chưa ghim seed → thao tác
 không ổn định về thứ tự (`groupby`, `set`) → khác phiên bản thư viện.
@@ -307,8 +339,13 @@ không ổn định về thứ tự (`groupby`, `set`) → khác phiên bản th
 | Notebook 04 chạy quá 3 giờ | `n_estimators` quá lớn ở giai đoạn so sánh | Hạ xuống 100, chỉ tăng lại khi tinh chỉnh |
 | PR-AUC > 0,95 | Gần như chắc chắn rò rỉ dữ liệu | Rà theo [08 §3.1](08-ke-hoach-kiem-thu.md) |
 | `docker compose up` báo thiếu tệp | Volume trỏ sai hoặc chưa có hiện vật | Kiểm tra đường dẫn trong `docker-compose.yml` |
+| `api` không lên `(healthy)`; `docker compose logs api` ghi "Thiếu hiện vật" hoặc "sai cấu trúc" | Thiếu một trong 7 hiện vật, hoặc chúng đến từ nhiều lần xuất khác nhau | Đặt đủ hiện vật (README, bước 3) rồi `docker compose restart api` |
+| `docker compose logs api` ghi "chấm lại tập kiểm thử ra điểm khác" | Thư viện trong ảnh khác lúc xuất hiện vật | Sửa `api/requirements.txt` theo `metrics.json → environment.packages`, `docker compose build api` (§6) |
+| Giao diện báo "API chưa sẵn sàng" (`API_UNAVAILABLE`) | nginx không tới được `api`: đang khởi động (vài giây đầu) hoặc đã dừng | Đợi; nếu kéo dài thì `docker compose ps` và `docker compose logs api` |
+| `docker compose up --build` lỗi ở `npm ci` | Mạng chặn registry npm | `WEB_UI=web docker compose up --build -d` — bản Alpine.js không cần npm |
+| `port is already allocated` cho 8000 hoặc 3000 | Có uvicorn, `http.server` hay `npm run dev` của lúc phát triển đang chạy | Dừng chúng, hoặc đặt `API_HOST_PORT` / `WEB_HOST_PORT` trong `.env` |
 | `connection refused` tới cổng 5432 | Container `db` chưa sẵn sàng, hoặc chạy API mà quên bật `db` | `docker compose up -d db`, đợi `pg_isready` trả `accepting connections` |
-| `port is already allocated` cho 5432 | Máy đã có PostgreSQL khác | Đổi ánh xạ cổng thành `"5433:5432"` và sửa `DATABASE_URL` |
+| `port is already allocated` cho 5432 | Máy đã có PostgreSQL khác | Đặt `POSTGRES_HOST_PORT=5433` trong `.env` (§2.3); chạy API trên máy thì sửa cả `DATABASE_URL` |
 | API báo lỗi ở yêu cầu đầu tiên sau khi `db` khởi động lại | Kết nối cũ trong pool đã chết | Bật `pool_pre_ping=True` ([06 §4.1](06-thiet-ke-luu-tru.md)) |
 | `alembic upgrade head` báo "target database is not up to date" | Lược đồ bị sửa tay không qua migration | `docker compose down -v` rồi dựng lại từ migration |
 | Hàng đợi tải chậm sau khi nạp lô lớn | Thống kê của bộ tối ưu truy vấn còn cũ | `VACUUM ANALYZE transactions;` ([06 §7.5](06-thiet-ke-luu-tru.md)) |
@@ -331,7 +368,7 @@ không ổn định về thứ tự (`groupby`, `set`) → khác phiên bản th
 - [ ] Tải dữ liệu theo §2.2, kiểm tra ra `(284807, 31) 492`.
 - [ ] Chạy `pytest` — toàn bộ xanh.
 - [ ] Chạy notebook 01 → 08, đối chiếu PR-AUC với báo cáo (lệch < 0,001).
-- [ ] `docker compose up`, đợi `/health` trả 200 (lần đầu 20–40 giây), mở `http://localhost:3000`, duyệt bốn màn hình.
+- [ ] `docker compose up --build -d`, đợi `docker compose ps` báo `api (healthy)` (khoảng 15 giây sau khi build xong), mở `http://localhost:3000`, duyệt bốn màn hình.
 - [ ] Thẩm định một giao dịch, chạy `docker compose restart api`, tải lại trang — kết luận vẫn còn (AC-A7).
 - [ ] Mở `http://localhost:8000/docs`, thử `POST /score` với một mẫu từ `/samples`.
 - [ ] Ở màn hình ngưỡng, kéo từ 0,5 về ngưỡng đề xuất và quan sát các chỉ số đổi.

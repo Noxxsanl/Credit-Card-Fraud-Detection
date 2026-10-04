@@ -1,6 +1,7 @@
 # Core
 numpy>=1.26
 pandas>=2.1
+pyarrow>=14          # đọc/ghi data/test_set.parquet (notebook 03, 08 và API)
 scipy>=1.11
 
 # ML

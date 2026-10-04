@@ -21,9 +21,9 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 🚩 Mốc quyết định A/B | 1 | 1 | ✅ B |
 | 7. API | 11 | 11 | ✅ |
 | 8. Giao diện | 7 | 7 | ✅ |
-| 9. Đóng gói | 5 | 0 | |
+| 9. Đóng gói | 5 | 5 | ✅ |
 | 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **57** | **85%** |
+| **Tổng** | **67** | **62** | **93%** |
 
 ---
 
@@ -220,7 +220,7 @@ ba cách chia tập). Notebook cần `reports/grid_results.npz` của giai đo�
 trong git, thiếu thì chạy `scripts/run_grid.py` trước.
 
 Đủ lệnh (PowerShell và Git Bash), hiện vật sinh ra, số đối chiếu và các bẫy đã gặp:
-[docs/lenh-chay-giai-doan-4.md](docs/lenh-chay-giai-doan-4.md).
+[docs/lenh-chay §4](docs/lenh-chay.md).
 
 ### Ghi chú khi làm xong giai đoạn 4
 
@@ -296,7 +296,7 @@ foreach ($nb in "06_threshold_and_cost", "07_explainability", "06b_autoencoder")
 
 Tổng khoảng 10 phút. Cần `reports/grid_results.npz` (điểm out-of-fold của giai đoạn 3); thiếu thì
 notebook tự tính lại. Đủ lệnh, hiện vật và số đối chiếu:
-[docs/lenh-chay-giai-doan-5.md](docs/lenh-chay-giai-doan-5.md).
+[docs/lenh-chay §5](docs/lenh-chay.md).
 
 ### Ghi chú khi làm xong giai đoạn 5
 
@@ -366,7 +366,7 @@ mean|SHAP| lấy từ `reports/shap_ranking.csv`.
 
 Notebook 08 phải chạy **sau** notebook 03 (chạy lại 03 là mất cột `risk_score` của
 `test_set.parquet`). Đủ lệnh, hiện vật, số đối chiếu và các bẫy đã gặp:
-[docs/lenh-chay-giai-doan-6.md](docs/lenh-chay-giai-doan-6.md). Cấu trúc từng tệp:
+[docs/lenh-chay §6](docs/lenh-chay.md). Cấu trúc từng tệp:
 [docs/06 §6](docs/06-thiet-ke-luu-tru.md), đã viết lại theo số thật.
 
 ### Ghi chú khi làm xong giai đoạn 6
@@ -475,7 +475,7 @@ docker compose up -d db                                        # T-40
 ```
 
 Đủ lệnh, số đối chiếu, cách kiểm AC-A6 trên uvicorn và các bẫy đã gặp:
-[docs/lenh-chay-giai-doan-7.md](docs/lenh-chay-giai-doan-7.md). Những điểm bản thi hành cụ thể hơn
+[docs/lenh-chay §7](docs/lenh-chay.md). Những điểm bản thi hành cụ thể hơn
 hợp đồng ban đầu: [docs/05 §7](docs/05-thiet-ke-api.md).
 
 ### Ghi chú khi làm xong giai đoạn 7
@@ -569,7 +569,7 @@ docker compose up -d db
 ```
 
 Đủ lệnh, cách nạp dữ liệu demo, số đối chiếu và các bẫy đã gặp:
-[docs/lenh-chay-giai-doan-8.md](docs/lenh-chay-giai-doan-8.md). Những điểm bản thi hành cụ thể hơn
+[docs/lenh-chay §8](docs/lenh-chay.md). Những điểm bản thi hành cụ thể hơn
 thiết kế: [docs/07 §12](docs/07-thiet-ke-giao-dien.md).
 
 ### Ghi chú khi làm xong giai đoạn 8
@@ -615,11 +615,11 @@ vùng 0,0005…0,97; ô nhập số cho giá trị chính xác. Phím: `←`/`�
 Tailwind 4 + Recharts 3, xuất tĩnh ra `frontend/out/`. Cùng bốn màn hình, cùng số; kịch bản thử tự động
 21/21 đạt, AC-A3 lâu nhất 39 ms, `tsc` và ESLint sạch. TC-12 nay đối chiếu **cả hai** tệp UI-D1 với Python
 (`web/threshold.js` và `frontend/src/lib/threshold.mjs`). Bản `web/` giữ làm dự phòng. So sánh hai bản:
-[docs/07 §13](docs/07-thiet-ke-giao-dien.md); lệnh chạy: [docs/lenh-chay-giai-doan-8 §6](docs/lenh-chay-giai-doan-8.md).
+[docs/07 §13](docs/07-thiet-ke-giao-dien.md); lệnh chạy: [docs/lenh-chay §8.6](docs/lenh-chay.md).
 
 **Phát sinh thêm:** `web/config.js` (địa chỉ API, để giai đoạn 9 thay khi đóng gói), hộp thoại thư
 viện mẫu, `src.evaluate.thin_curve`, 2 ca trong `tests/test_artifacts.py`. Tài liệu: docs/07 §12 mới,
-docs/06 §3 (cách rút mẫu đường cong), docs/08 §2.7, docs/10 §4.2, `docs/lenh-chay-giai-doan-8.md`.
+docs/06 §3 (cách rút mẫu đường cong), docs/08 §2.7, docs/10 §4.2, `docs/lenh-chay.md` §8.
 
 **Mang sang giai đoạn 9:**
 
@@ -635,13 +635,93 @@ docs/06 §3 (cách rút mẫu đường cong), docs/08 §2.7, docs/10 §4.2, `do
 
 ---
 
-## Giai đoạn 9 — Đóng gói và nghiệm thu (ngày 20)
+## Giai đoạn 9 — Đóng gói và nghiệm thu (ngày 20) ✅
 
-- [ ] **T-58** `api/Dockerfile`, `web/Dockerfile`, compose 3 dịch vụ với `depends_on: service_healthy`, entrypoint chạy `alembic upgrade head` — *xong là khi:* một lệnh `docker compose up` dựng cả hệ thống.
-- [ ] **T-59** Thử trên máy sạch hoặc máy ảo, bấm giờ cả lần đầu và lần sau — *xong là khi:* cold dưới 45 giây, warm dưới 15 giây (NFR-04, AC-A8).
-- [ ] **T-60** Tạo bản `pg_dump` dữ liệu demo đẹp để dự phòng cho buổi bảo vệ — *xong là khi:* khôi phục thử được trong vài giây.
-- [ ] **T-61** Duyệt toàn bộ AC-A1…AC-A10 và kiểm tra bàn phím (AC-A9) — *xong là khi:* mọi tiêu chí bắt buộc đạt hoặc được ghi rõ lý do không đạt.
-- [ ] **T-62** Cập nhật README: cách chạy lại từ đầu trên máy sạch — *xong là khi:* người khác làm theo được mà không cần hỏi thêm (AC-D3).
+- [x] **T-58** `api/Dockerfile`, `web/Dockerfile`, compose 3 dịch vụ với `depends_on: service_healthy`, entrypoint chạy `alembic upgrade head` — *xong là khi:* một lệnh `docker compose up` dựng cả hệ thống.
+- [x] **T-59** Thử trên máy sạch hoặc máy ảo, bấm giờ cả lần đầu và lần sau — *xong là khi:* cold dưới 45 giây, warm dưới 15 giây (NFR-04, AC-A8).
+- [x] **T-60** Tạo bản `pg_dump` dữ liệu demo đẹp để dự phòng cho buổi bảo vệ — *xong là khi:* khôi phục thử được trong vài giây.
+- [x] **T-61** Duyệt toàn bộ AC-A1…AC-A10 và kiểm tra bàn phím (AC-A9) — *xong là khi:* mọi tiêu chí bắt buộc đạt hoặc được ghi rõ lý do không đạt.
+- [x] **T-62** Cập nhật README: cách chạy lại từ đầu trên máy sạch — *xong là khi:* người khác làm theo được mà không cần hỏi thêm (AC-D3).
+
+### Cách chạy
+
+```powershell
+docker compose up --build -d                                         # lần đầu ~4 phút build, rồi ~15 giây khởi động
+docker compose ps                                                    # api (healthy) → http://localhost:3000
+.\.venv\Scripts\python.exe scripts\time_startup.py --runs 3          # T-59 warm; thêm --cold --yes để đo cold (XÓA volume)
+.\.venv\Scripts\python.exe scripts\demo_db.py seed                   # T-60: dữ liệu demo, rồi dump / restore
+.\.venv\Scripts\python.exe -m pytest tests\test_packaging.py         # 12 ca, không cần Docker
+cd scripts\ui; npm install; node flow.js; node keyboard.js           # T-61: Chrome thật, 21 + 24 bước
+```
+
+Đủ lệnh, số đo và các bẫy đã gặp: [docs/lenh-chay §9](docs/lenh-chay.md).
+Hướng dẫn cho máy sạch: [README](README.md#chạy-lại-từ-đầu-trên-máy-sạch).
+
+### Ghi chú khi làm xong giai đoạn 9
+
+**Kết quả theo điều kiện "xong là khi":**
+
+| Việc | Điều kiện | Kết quả |
+|---|---|---|
+| T-58 | một lệnh `docker compose up` dựng cả hệ thống | đạt: `db` → `api` (`depends_on: service_healthy`, entrypoint chạy `alembic upgrade head` rồi uvicorn) → `web` (nginx). Build sạch 244 giây |
+| T-59 | cold < 45 s, warm < 15 s | cold **13,7–14,9 s**, warm **11,1–11,5 s** trên bản sao sạch của repo, 3 lần mỗi loại — xem điểm 4 về giới hạn của "máy sạch" |
+| T-60 | khôi phục thử trong vài giây | `backup/fraud-demo.dump` 3,0 MB (10.179 giao dịch, 8 kết luận); khôi phục **2,3–2,4 s**, cả sau khi xóa dữ liệu lẫn sau khi mất hẳn volume |
+| T-61 | mọi tiêu chí bắt buộc đạt hoặc ghi rõ lý do | AC-A1…AC-A10 đều đạt trên hệ thống đóng gói; AC-A9 24/24 và Lighthouse Accessibility 100 — bảng ở [08 §4.4](docs/08-ke-hoach-kiem-thu.md) |
+| T-62 | người khác làm theo được không cần hỏi | README có mục "Chạy lại từ đầu trên máy sạch": 4 bước, hai cách có hiện vật, bảng lỗi thường gặp. **Chưa** có người thứ hai làm theo — xem "Mang sang giai đoạn 10" |
+
+Toàn bộ kiểm thử: **335 xanh** (323 + 12 ca của `tests/test_packaging.py`).
+
+**1. Trình duyệt chỉ nói chuyện với một cổng.** nginx của dịch vụ `web` phục vụ tệp tĩnh và chuyển
+tiếp `/api/` sang `api:8000`; cả hai bản giao diện được build với địa chỉ API tương đối `/api/v1`. Không
+còn phụ thuộc CORS, mở bằng IP hay đổi cổng vẫn chạy. Luồng SSE đi qua với `proxy_buffering off`: từng
+sự kiện đến ngay, 185 giây không lỗi (AC-A6). Lỗi do chính nginx sinh ra cũng theo mô hình lỗi của
+API: `503 API_UNAVAILABLE` khi `api` dừng, `413 PAYLOAD_TOO_LARGE` khi tệp vượt 110 MB. Cổng 8000 vẫn mở
+cho `/docs`.
+
+**2. Bản giao diện đóng gói mặc định là Next.js** (`frontend/Dockerfile`, hai tầng node → nginx, ảnh 95 MB).
+`WEB_UI=web` đổi sang bản Alpine.js — build không cần npm, dùng khi mạng chặn npm. Cả hai dùng chung
+`deploy/nginx.conf`.
+
+**3. Ảnh `api` ghim đúng phiên bản lúc xuất hiện vật** (`api/requirements.txt`, có ca kiểm thử canh lệch
+với `metrics.json`). Hai phát hiện khi chạy trong container:
+
+- Điểm chấm trên Linux lệch **1 ulp float32** ở 35/56.746 giao dịch so với điểm notebook tính trên
+  Windows; 0 quyết định bị lật. "Trùng từng bit" của T-35 chỉ đúng trên cùng hệ điều hành
+  ([10 §6](docs/10-van-hanh-tai-lap.md)).
+- Ảnh `python` chính thức xóa `.pyc` của thư viện chuẩn, làm warm start lên 14,4 s. Biên dịch sẵn lúc
+  build đưa về 11–12 s.
+
+**4. "Máy sạch" là bản sao sạch trên chính máy phát triển**, không phải máy thứ hai: chỉ tệp git theo
+dõi cộng 7 hiện vật, không `.venv`/`node_modules`/`.env`, dự án Compose riêng nên ảnh và volume mới. Không
+loại được bộ đệm ảnh nền của Docker, và phải đặt `POSTGRES_HOST_PORT=5434` vì PostgreSQL 17 của máy chiếm
+5432. AC-A8 đạt theo nghĩa đó; lượt trên máy thật khác vẫn nên làm.
+
+**5. AC-A9 hiểu là "Tab, Enter và phím mũi tên trong nhóm".** Bảng hàng đợi là một điểm dừng Tab
+(roving tabindex, `↓`/`↑` giữa các dòng — 07 §10), thanh trượt và nhóm radio cũng vậy, đúng mẫu
+WAI-ARIA. Mọi thao tác khác — bốn màn hình, thư viện mẫu, ngăn kéo, ghi kết luận, phát lại — làm được
+bằng Tab và Enter; mọi điểm dừng có viền trọng tâm; trọng tâm không thoát khỏi hộp thoại; đóng hộp thoại
+trả trọng tâm về đúng chỗ.
+
+**6. Đường để người chấm có hiện vật là điểm yếu nhất của AC-D3.** Năm tệp hiện vật không nằm trong git.
+Tự tạo bằng notebook 03 → 08 mất khoảng 20 phút nhưng có thể dừng ở bước đối chiếu trên máy khác số lõi
+(XGBoost phụ thuộc số luồng khi huấn luyện). README vì vậy để **gói hiện vật** (`hien-vat.tgz`, 19 MB) là
+cách A.
+
+**Phát sinh thêm:** `scripts/time_startup.py`, `scripts/demo_db.py`, `scripts/ui/` (kịch bản Puppeteer
+của giai đoạn 8 đưa vào repo, thêm `keyboard.js`), `tests/test_packaging.py`, `deploy/nginx.conf`,
+`.dockerignore`; `pyarrow` vào `requirements.txt`. Tài liệu: README, docs/03 §6.3 và §7, docs/05 §4,
+docs/06 §7, docs/08 §2.8, §4.4, §5, docs/10 §1, §2.2, §4.1, §6, §7, §9, `docs/lenh-chay.md` §9.
+
+**Mang sang giai đoạn 10:**
+
+- Quyết định cách nộp hiện vật: kèm `hien-vat.tgz` (19 MB) theo bài, hoặc đưa năm tệp vào git. Không có
+  thì người chấm phải tự chạy notebook (cách B của README).
+- Nhờ một người khác làm theo README trên máy của họ (AC-D3, AC-A8 đúng nghĩa).
+- Kịch bản demo (T-66): khởi động trước, `python scripts/demo_db.py restore`, dùng số thật của
+  [lenh-chay §8.3](docs/lenh-chay.md) (74 → 77/95, 6.466 → 5.974 EUR/ngày); đoạn
+  "Gian lận khó + bấm A" vẫn để dành vì `seed` không nạp nhóm đó.
+- Báo cáo (T-63, T-64) nên nói đúng hai điều: AC-A4 là "5 và 3 khi mô hình có đủ" (giai đoạn 7, điểm 2);
+  điểm trong container trùng notebook tới 1 ulp, không phải từng bit.
 
 ---
 

@@ -12,7 +12,7 @@ HTML + Alpine.js trong `../web/` — bản đó giữ lại làm phương án d�
 
 ## Chạy
 
-Cần API ở cổng 8000 (`uvicorn api.main:app --port 8000`, xem `../docs/lenh-chay-giai-doan-7.md`)
+Cần API ở cổng 8000 (`uvicorn api.main:app --port 8000`, xem `../docs/lenh-chay.md` §7)
 và Node.js 20.9 trở lên.
 
 ```bash
@@ -54,6 +54,17 @@ src/
 
 ```bash
 cd .. && .venv/Scripts/python.exe -m pytest tests/test_threshold_parity.py
+```
+
+## Đóng gói
+
+`Dockerfile` build hai tầng — `node:22-alpine` chạy `npm ci && npm run build`, rồi `nginx:stable-alpine`
+phục vụ `out/` — với `NEXT_PUBLIC_API_BASE=/api/v1`: trong Docker Compose, nginx chuyển tiếp `/api/`
+sang dịch vụ `api` (`../deploy/nginx.conf`), nên không cần CORS. Đây là bản giao diện mà
+`docker compose up` đóng gói mặc định (`../docs/lenh-chay.md` §9). Build từ gốc repo:
+
+```bash
+cd .. && docker compose build web
 ```
 
 ## Bước postbuild

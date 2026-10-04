@@ -414,6 +414,7 @@ Mọi lỗi trả về cùng một cấu trúc:
 | 500 | `INTERNAL_ERROR` | Lỗi không lường trước; ghi log kèm mã truy vết |
 | 503 | `DATABASE_UNAVAILABLE` | Mất kết nối PostgreSQL; `pool_pre_ping` đã thử kết nối lại mà không được |
 | 503 | `MODEL_NOT_LOADED` | Chưa nạp xong hiện vật |
+| 503 | `API_UNAVAILABLE` | **Do nginx trả, không phải API** (chỉ khi chạy bằng Docker Compose, qua cổng 3000): tiến trình API đang khởi động hoặc đã dừng (`deploy/nginx.conf`). Tệp vượt 110 MB thì nginx cũng tự trả `413 PAYLOAD_TOO_LARGE` cùng cấu trúc |
 
 Nguyên tắc: **không bao giờ trả 200 kèm thông báo lỗi trong thân phản hồi**, và
 không bao giờ để ngoại lệ chưa bắt làm sập tiến trình (AC-A10).
