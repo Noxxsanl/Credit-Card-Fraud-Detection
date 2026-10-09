@@ -238,9 +238,15 @@ def bootstrap_threshold_diff(
     Cùng một mẫu bootstrap (phân tầng như ``bootstrap_ci``) được dùng cho cả hai
     ngưỡng. Chỉ những giao dịch nằm GIỮA hai ngưỡng mới đóng góp vào hiệu, nên
     so hai khoảng tin cậy riêng lẻ sẽ rộng hơn thực tế rất nhiều.
+
+    ``cost_fn`` là một số (mọi vụ bỏ lọt cùng giá) hoặc một mảng chi phí theo từng giao
+    dịch, ví dụ chính ``Amount`` (``src.threshold.missed_cost``).
     """
     y_true = np.asarray(y_true).ravel()
     y_scores = np.asarray(y_scores, dtype="float64").ravel()
+    cost_fn = np.asarray(cost_fn, dtype="float64")
+    if cost_fn.ndim and cost_fn.shape != y_scores.shape:
+        raise ValueError(f"cost_fn khác độ dài với y_scores: {cost_fn.shape} vs {y_scores.shape}")
 
     actual = y_true == 1
     flag_a = y_scores >= threshold_a

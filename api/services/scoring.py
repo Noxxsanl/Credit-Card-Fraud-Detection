@@ -47,24 +47,36 @@ _INSERT = text(
 # Dẫn xuất từ điểm và ngưỡng — 05 §2
 # --------------------------------------------------------------------------
 
-def risk_bands(scores, tau: float) -> np.ndarray:
-    """``low`` < τ/2 ≤ ``medium`` < τ ≤ ``high`` < 3τ ≤ ``critical``."""
+def block_cut(tau: float, tau_block: float) -> float:
+    """Biên của dải ``critical``/``block``: ngưỡng đề xuất chặn, nhưng không bao giờ dưới τ —
+    người dùng nâng τ vượt mức chặn thì mọi cảnh báo đều là đề xuất chặn."""
+    return max(tau, tau_block)
+
+
+def risk_bands(scores, tau: float, tau_block: float) -> np.ndarray:
+    """``low`` < τ/2 ≤ ``medium`` < τ ≤ ``high`` < τ_chặn ≤ ``critical`` (05 §2)."""
     s = np.asarray(scores, dtype="float64")
-    return np.select([s < tau / 2, s < tau, s < 3 * tau], ["low", "medium", "high"], default="critical")
+    return np.select([s < tau / 2, s < tau, s < block_cut(tau, tau_block)], ["low", "medium", "high"],
+                     default="critical")
 
 
-def decisions(scores, tau: float) -> np.ndarray:
-    """``allow`` dưới τ; ``review`` từ τ tới dưới 3τ; ``block`` từ 3τ (trùng dải critical)."""
+def decisions(scores, tau: float, tau_block: float) -> np.ndarray:
+    """``allow`` dưới τ; ``review`` từ τ tới dưới τ_chặn; ``block`` từ τ_chặn (trùng dải critical).
+
+    τ_chặn chọn theo precision trên out-of-fold (``api.loader.block_threshold_from``), không theo
+    bội số của τ: luật cũ "≥ 3τ" chặn tự động 19/38 cảnh báo giả của tập kiểm thử, trong khi dải
+    "review" của nó không chứa vụ gian lận nào.
+    """
     s = np.asarray(scores, dtype="float64")
-    return np.select([s < tau, s < 3 * tau], ["allow", "review"], default="block")
+    return np.select([s < tau, s < block_cut(tau, tau_block)], ["allow", "review"], default="block")
 
 
-def risk_band(score: float, tau: float) -> str:
-    return str(risk_bands([score], tau)[0])
+def risk_band(score: float, tau: float, tau_block: float) -> str:
+    return str(risk_bands([score], tau, tau_block)[0])
 
 
-def decision(score: float, tau: float) -> str:
-    return str(decisions([score], tau)[0])
+def decision(score: float, tau: float, tau_block: float) -> str:
+    return str(decisions([score], tau, tau_block)[0])
 
 
 def distribution(bands: np.ndarray) -> dict[str, int]:
@@ -84,7 +96,9 @@ def normalize(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def score_frame(loaded: Artifacts, frame: pd.DataFrame) -> np.ndarray:
-    return loaded.model.predict_proba(build_features(frame))[:, 1].astype("float64")
+    """Điểm rủi ro. Đặc trưng qua ``build_features`` như lúc huấn luyện; bước tiền xử lý và dự
+    đoán qua ``FastScorer`` — trùng từng bit với ``model.predict_proba`` (kiểm lúc nạp)."""
+    return loaded.scorer.predict(build_features(frame))
 
 
 def frame_from_inputs(transactions) -> pd.DataFrame:
@@ -168,8 +182,8 @@ def score_one(loaded: Artifacts, session: Session, frame: pd.DataFrame, tau: flo
         "transaction_id": tx_id,
         "risk_score": score,
         "threshold": tau,
-        "decision": decision(score, tau),
-        "risk_band": risk_band(score, tau),
+        "decision": decision(score, tau, loaded.block_threshold),
+        "risk_band": risk_band(score, tau, loaded.block_threshold),
         "model_version": loaded.model_version,
     }
 
@@ -186,7 +200,7 @@ def score_many(loaded: Artifacts, session: Session, frame: pd.DataFrame, tau: fl
         copy_rows(session, transaction_rows(frame, scores, ids, model_version=loaded.model_version,
                                             source=source, batch_id=batch_id, labels=labels))
         session.commit()
-    bands = risk_bands(scores, tau)
+    bands = risk_bands(scores, tau, loaded.block_threshold)
     return {
         "batch_id": batch_id,
         "count": int(len(frame)),
@@ -197,7 +211,7 @@ def score_many(loaded: Artifacts, session: Session, frame: pd.DataFrame, tau: fl
         "scores": scores,
         "ids": ids,
         "bands": bands,
-        "decisions": decisions(scores, tau),
+        "decisions": decisions(scores, tau, loaded.block_threshold),
     }
 
 

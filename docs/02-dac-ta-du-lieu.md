@@ -20,10 +20,15 @@ Cách tải: xem [10 — Vận hành và tái lập §2](10-van-hanh-tai-lap.md)
 
 | Cột | Kiểu | Miền giá trị | Ghi chú |
 |---|---|---|---|
-| `Time` | float64 | 0 … 172.792 | Số giây kể từ giao dịch đầu tiên trong bộ dữ liệu |
+| `Time` | float64 | 0 … 172.792 | Số giây kể từ giao dịch đầu tiên trong bộ dữ liệu — giờ bắt đầu không được ghi (xem DS-03) |
 | `V1` … `V28` | float64 | Không giới hạn, trung bình ≈ 0 | Thành phần chính sau PCA, đã ẩn danh |
-| `Amount` | float64 | 0 … 25.691,16 | Số tiền giao dịch, lệch phải rất mạnh |
+| `Amount` | float64 | 0 … 25.691,16 | Số tiền giao dịch, lệch phải rất mạnh. Đơn vị: xem dưới |
 | `Class` | int64 | 0 hoặc 1 | 1 = gian lận |
+
+**Đơn vị tiền.** Bộ dữ liệu không ghi đơn vị của `Amount`. Đây là giao dịch của chủ thẻ châu Âu,
+nên toàn dự án — tài liệu, notebook, API, giao diện — quy ước **EUR**. Mọi con số chi phí (122,21
+cho một vụ bỏ lọt, 5 cho một cảnh báo) dùng cùng đơn vị đó. Báo cáo phải nêu đây là quy ước, không
+phải dữ kiện.
 
 ### 2.1 Phân bố nhãn
 
@@ -49,8 +54,8 @@ Hệ quả trực tiếp lên thiết kế:
 Không cần chuẩn hóa lại. Chương 2 của môn học được vận dụng ở chỗ *đọc hiểu* ý
 nghĩa của phép biến đổi này, không phải ở chỗ áp dụng thêm PCA.
 
-**DS-02 — `Amount` lệch phải cực mạnh.** Trung vị khoảng 22 USD nhưng giá trị lớn
-nhất hơn 25.000 USD. Dùng `RobustScaler` (dựa trên trung vị và IQR) thay vì
+**DS-02 — `Amount` lệch phải cực mạnh.** Trung vị khoảng 22 EUR nhưng giá trị lớn
+nhất hơn 25.000 EUR. Dùng `RobustScaler` (dựa trên trung vị và IQR) thay vì
 `StandardScaler`, vì giá trị ngoại lai sẽ kéo lệch trung bình và độ lệch chuẩn.
 Khi vẽ biểu đồ, dùng thang log.
 
@@ -58,6 +63,14 @@ Khi vẽ biểu đồ, dùng thang log.
 sổ hai ngày cụ thể. Đưa thẳng vào mô hình là dạy mô hình một đặc điểm không tồn
 tại khi triển khai — chỉ số 86.400 không có ý nghĩa gì ngoài bộ dữ liệu này.
 Thông tin dùng được duy nhất là **giờ trong ngày**, vì nó lặp lại.
+
+**Giả định đi kèm DS-03: giao dịch đầu tiên (`Time = 0`) xảy ra lúc 00:00.** Giờ trong ngày tính
+bằng `floor(Time / 3600) mod 24` (`src/features.py → hour_of_day`), nên nó chỉ đúng nếu cửa sổ dữ
+liệu bắt đầu lúc nửa đêm — điều bộ dữ liệu không ghi. Bằng chứng gián tiếp, trên 283.726 dòng sau
+khi loại trùng lặp: sáu giờ vắng nhất là 1h–6h (mỗi giờ 0,8–1,5% lượng giao dịch, so với 5–6% vào
+ban ngày), khớp với ban đêm. Nếu giả định sai, `hour_sin`/`hour_cos` lệch pha một hằng số nhưng vẫn
+lặp đúng chu kỳ 24 giờ, nên mô hình vẫn học được quy luật theo giờ; chỉ **cách đọc** "giờ 2h có tỷ
+lệ gian lận cao" là phụ thuộc giả định. Báo cáo phải nêu điều này trong phần hạn chế.
 
 ## 4. Đặc trưng đưa vào mô hình
 

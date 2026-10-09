@@ -131,8 +131,8 @@ dùng mở chi tiết — không gọi cho mọi dòng trong danh sách.
 
 | Mã | Giả định | Nếu sai thì sao |
 |---|---|---|
-| A-01 | Chi phí bỏ lọt xấp xỉ số tiền giao dịch trung bình của nhóm gian lận (khoảng 122 USD) | Ngưỡng tối ưu dịch chuyển; hệ thống cho phép người dùng nhập lại giá trị |
-| A-02 | Chi phí thẩm định một cảnh báo khoảng 5 USD | Như trên |
+| A-01 | Chi phí bỏ lọt xấp xỉ số tiền giao dịch trung bình của nhóm gian lận (khoảng 122 EUR) | Ngưỡng tối ưu dịch chuyển; hệ thống cho phép người dùng nhập lại giá trị. Đã kiểm (notebook 06 §6.1): tính theo số tiền **từng vụ** thì τ\* đắt hơn 0,5 trên tập kiểm thử — giả định này quyết định cả dấu của khoản tiết kiệm |
+| A-02 | Chi phí thẩm định một cảnh báo khoảng 5 EUR | Như trên |
 | A-03 | Phân bố dữ liệu kiểm thử đại diện cho dữ liệu vận hành | Kết quả lạc quan hơn thực tế — phải nêu trong phần hạn chế |
 | A-04 | Nhãn `Class` chính xác | Trần hiệu năng bị giới hạn bởi nhiễu nhãn |
 

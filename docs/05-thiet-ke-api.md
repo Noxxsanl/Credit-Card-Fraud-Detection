@@ -37,14 +37,27 @@ RiskBand = "low" | "medium" | "high" | "critical"
 Decision = "allow" | "review" | "block"
 ```
 
-Quy tắc suy ra `risk_band` từ `risk_score` và ngưỡng hiện hành τ:
+Quy tắc suy ra `risk_band` từ `risk_score`, ngưỡng hiện hành τ và **ngưỡng đề xuất chặn** τ_chặn
+(`B = max(τ, τ_chặn)`):
 
 | Dải | Điều kiện |
 |---|---|
 | `low` | `score < τ/2` |
 | `medium` | `τ/2 ≤ score < τ` |
-| `high` | `τ ≤ score < 3τ` |
-| `critical` | `score ≥ 3τ` |
+| `high` | `τ ≤ score < B` |
+| `critical` | `score ≥ B` |
+
+**τ_chặn** là ngưỡng nhỏ nhất mà **mọi** ngưỡng từ đó trở lên có precision ≥ 95% trên điểm
+out-of-fold (`BLOCK_MIN_PRECISION` trong `api/config.py`, `pick_threshold(..., "min_precision")`).
+API tính lúc nạp hiện vật; nó thuộc về mô hình, không đổi khi người dùng đặt τ. Mô hình hiện tại:
+τ_chặn ≈ 0,9735. Lấy `max(τ, τ_chặn)` để khi người dùng nâng τ vượt mức chặn thì mọi cảnh báo đều là
+`block`, không có dải `review` âm.
+
+Thiết kế cũ đặt biên ở `3τ`. Bội số 3 không dựa trên phân tích nào, và đo trên tập kiểm thử tại
+τ\* thì sai hẳn: dải `review` (τ…3τ) chứa 19 giao dịch, **không vụ gian lận nào**; dải `block` chặn
+tự động 96 giao dịch, trong đó **19 khách hợp lệ** — một nửa số cảnh báo giả. Với τ_chặn theo
+precision: `block` 70 giao dịch, 69 gian lận, 1 hợp lệ; `review` 45 giao dịch, trong đó 8 vụ gian
+lận để người thẩm định bắt (notebook 06 §6.2, `reports/block_threshold.csv`).
 
 Dải rủi ro là **dẫn xuất**, tính lại mỗi lần trả kết quả — vì τ thay đổi được
 (AR-03). Không lưu vào cơ sở dữ liệu.
@@ -54,11 +67,11 @@ Dải rủi ro là **dẫn xuất**, tính lại mỗi lần trả kết quả �
 | `decision` | Điều kiện | Dải tương ứng |
 |---|---|---|
 | `allow` | `score < τ` | `low`, `medium` |
-| `review` | `τ ≤ score < 3τ` | `high` |
-| `block` | `score ≥ 3τ` | `critical` |
+| `review` | `τ ≤ score < B` | `high` |
+| `block` | `score ≥ B` | `critical` |
 
-Biên `3τ` so bằng số thực máy (IEEE 754), giống hệt phép tính ở trình duyệt: với τ = 0,05 thì
-`3τ = 0,15000000000000002`, nên điểm 0,15 gõ tay thuộc dải `high`.
+`GET /threshold` (API-09) trả `block_threshold` (τ_chặn) và `block_min_precision` để giao diện
+giải thích được vì sao một giao dịch là "đề xuất chặn".
 
 ## 3. Chi tiết endpoint
 
@@ -277,12 +290,14 @@ Một giao dịch chỉ có một bản ghi thẩm định; gửi lại sẽ ghi
     "budget_200_alerts": 0.0612,
     "default_naive": 0.5000
   },
-  "model_version": "xgb_scaleposweight_v3"
+  "model_version": "xgb_scaleposweight_v3",
+  "block_threshold": 0.9735,
+  "block_min_precision": 0.95
 }
 ```
 
 `source` là `artifact` (giá trị mặc định từ `threshold.json`) hoặc `user` (người
-dùng đã đổi và giá trị đang nằm trong bảng `settings`).
+dùng đã đổi và giá trị đang nằm trong bảng `settings`). `block_threshold`: xem §2.
 
 ### API-10 — `PUT /api/v1/threshold`
 
@@ -469,7 +484,10 @@ là chỗ bản thi hành phải chọn một cách hiểu, hoặc phải đổi
 | API-07 | `amount_percentile` so với phân bố `Amount` của **tập kiểm thử**, không với bảng `transactions` | Bảng chỉ có những gì người dùng đã nạp — vài chục dòng thì phân vị vô nghĩa. Câu SQL cũ ở 06 §4.4 còn sai: `WHERE` lọc trước hàm cửa sổ nên luôn ra 0 |
 | API-07 | thêm `features` (30 cột thô), `decision`, `threshold`, `review`, `model_version_current` | 06 §8: gắn nhãn cảnh báo khi điểm do mô hình khác chấm |
 | API-08 | phản hồi có `true_label` và `matches_label` | Nhãn chỉ lộ **sau** khi đã quyết định (UI-02) |
+| API-05 | SHAP tính bằng `pred_contribs=True` của XGBoost (`api/serving.py`), không nạp `explainer.joblib` | Cùng thuật toán TreeSHAP, trùng **từng bit** với `explainer.joblib` (`tests/test_api.py::test_t48…`); ảnh `api` bỏ được shap + numba + llvmlite (~210 MB) |
+| §2 | `critical`/`block` từ `max(τ, τ_chặn)`, τ_chặn chọn theo precision ≥ 95% trên out-of-fold — thay cho `3τ` | Luật 3τ chặn tự động 19/38 cảnh báo giả của tập kiểm thử và để dải `review` không có vụ gian lận nào (notebook 06 §6.2) |
 | API-09 | thêm `default` (τ\* của `threshold.json`) | Nút "đặt lại" ở UI-03 |
+| API-09 | thêm `block_threshold`, `block_min_precision` | §2 |
 | API-09 | `source = "user"` chỉ khi ngưỡng trong `settings` được đặt cho **đúng** `model_version` đang chạy | Huấn luyện lại thì một con số đặt cho mô hình cũ không còn nghĩa (06 §2) |
 | API-10 | nhận thêm `cost_fn`, `cost_fp` (tùy chọn) để lưu cùng ngưỡng | Nút "áp dụng" ở UI-03 áp cả tham số chi phí |
 | API-11 | nhận thêm `cost_fn`, `cost_fp` (tùy chọn); mặc định lấy từ `settings` | |
@@ -481,6 +499,7 @@ là chỗ bản thi hành phải chọn một cách hiểu, hoặc phải đổi
 | API-15 | `start` là **giây mô phỏng tính từ đầu ngày 2** (0 ≤ start < 86.400), `speed` từ 1 tới 3.600, mặc định lấy `replay_speed` trong `settings` | Tạm dừng là ngắt kết nối; tiếp tục là mở lại với `start` = đồng hồ lúc dừng |
 | API-15 | thêm sự kiện `start` (tổng số, ngưỡng, `batch_id`) và `end`; `stats` gửi mỗi giây, cũng là nhịp "còn sống"; mỗi giao dịch có `risk_band`, `sim_seconds` | Nhãn thật **không** gửi trong luồng |
 | API-15 | mỗi giao dịch phát ra được ghi vào `transactions` (`source = "replay"`, mã `RP-<dòng>`), mẻ 100 dòng, `ON CONFLICT DO NOTHING` | Cảnh báo "rơi vào hàng đợi" (UI-05); phát lại lần hai không nhân đôi (TC-44) |
+| API-15 | điểm rủi ro do **mô hình chấm lúc giao dịch tới giờ** trên đồng hồ mô phỏng (mẻ nhỏ, tối đa 500), cùng đường với `/score` — không đọc cột `risk_score` tính sẵn của `test_set.parquet` | Phát lại là trình diễn chấm điểm thật, không phải phát lại một bảng số |
 
 Số đo trên máy phát triển (12 lõi, đang có tải nền khoảng 50% CPU):
 

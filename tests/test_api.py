@@ -17,6 +17,7 @@ import pytest
 from sqlalchemy import text
 
 from api.config import Settings
+from src.config import EXPLAINER_PATH
 from src.features import RAW_REQUIRED_COLUMNS, build_features
 
 API = "/api/v1"
@@ -268,8 +269,21 @@ def test_t46_upload_10000_rows_under_30_seconds(client, loaded, clean_db):
 # API-05 — T-48, AC-A4
 # --------------------------------------------------------------------------
 
-def test_t48_explain_returns_5_up_3_down_matching_shap(client, pool, loaded):
-    """T-48 / AC-A4: 5 yếu tố dương, 3 yếu tố âm, khớp SHAP tính trực tiếp bằng explainer.
+@pytest.fixture(scope="module")
+def explainer():
+    """``explainer.joblib`` của notebook 08 — API không còn nạp tệp này (nó tính SHAP bằng
+    ``pred_contribs`` của XGBoost), nên chính ca kiểm thử nạp để đối chiếu."""
+    shap = pytest.importorskip("shap")  # noqa: F841 — unpickle cần thư viện shap
+    if not EXPLAINER_PATH.exists():
+        pytest.skip("chưa có models/explainer.joblib")
+    import joblib
+
+    return joblib.load(EXPLAINER_PATH)
+
+
+def test_t48_explain_returns_5_up_3_down_matching_shap(client, pool, loaded, explainer):
+    """T-48 / AC-A4: 5 yếu tố dương, 3 yếu tố âm, khớp **từng bit** SHAP của ``explainer.joblib``
+    (``shap.TreeExplainer`` của notebook 08) dù API tính bằng ``pred_contribs`` của XGBoost.
 
     "Dương" nghĩa là SHAP > 0 thật. Với giao dịch hợp lệ điểm thấp, mô hình thường chỉ có 1–4 đặc
     trưng đẩy điểm lên (77% tập kiểm thử); khi đó danh sách ngắn hơn chứ không mượn một đóng góp âm
@@ -280,7 +294,7 @@ def test_t48_explain_returns_5_up_3_down_matching_shap(client, pool, loaded):
     for item in pool[::5]:
         body = client.post(f"{API}/explain", json={"transaction": item["features"]}).json()
         features = build_features(pd.DataFrame([item["features"]]))
-        expected = loaded.explainer.shap_values(loaded.model[:-1].transform(features))[0].astype("float64")
+        expected = explainer.shap_values(loaded.model[:-1].transform(features))[0].astype("float64")
         names = loaded.model_feature_names
 
         assert len(body["top_positive"]) == min(5, int((expected > 0).sum()))
@@ -294,6 +308,7 @@ def test_t48_explain_returns_5_up_3_down_matching_shap(client, pool, loaded):
         ranked = [n for n, v in sorted(zip(names, expected), key=lambda p: -p[1]) if v > 0][:5]
         assert [c["feature"] for c in body["top_positive"]] == ranked
         assert abs(body["base_value"] + sum(got.values()) - body["margin"]) < 1e-3
+        assert body["base_value"] == float(np.ravel(explainer.expected_value)[0])
         assert body["risk_score"] == item["risk_score"]
     alerts = sum(i["risk_score"] >= tau for i in pool[::5])
     assert alerts > 0 and full == alerts        # mọi mẫu vượt ngưỡng trong lượt này đều đủ 5 yếu tố dương
@@ -585,8 +600,13 @@ def test_unknown_route_uses_the_error_envelope(client):
     assert response.status_code == 404 and response.json()["error"]["code"] == "NOT_FOUND"
 
 
+@pytest.mark.perf
 def test_nfr01_single_score_latency(client, tx):
-    """NFR-01: p95 < 50 ms trên 1.000 lời gọi liên tiếp (chấm thử, không ghi)."""
+    """NFR-01: p95 < 50 ms trên 1.000 lời gọi liên tiếp (chấm thử, không ghi).
+
+    Đo thời gian nên phụ thuộc tải của máy: đánh dấu ``perf`` và không chạy trong lượt mặc định
+    (pytest.ini). Chạy riêng: ``pytest -m perf``.
+    """
     server, wall = [], []
     for _ in range(1000):
         started = time.perf_counter()

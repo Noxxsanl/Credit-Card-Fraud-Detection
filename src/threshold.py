@@ -28,6 +28,7 @@ CRITERIA = (
     "min_expected_cost",
     "max_f1",
     "min_recall",
+    "min_precision",
     "max_alerts_per_day",
     "naive",
 )
@@ -63,6 +64,26 @@ def _as_arrays(y_true, y_scores) -> tuple[np.ndarray, np.ndarray]:
             f"y_true và y_scores khác độ dài: {y_true.shape} vs {y_scores.shape}"
         )
     return y_true, y_scores
+
+
+def missed_cost(y_true, y_scores, fn_costs, thresholds) -> np.ndarray:
+    """Tổng chi phí của các vụ gian lận bị bỏ lọt (``score < τ``) tại từng ngưỡng.
+
+    ``fn_costs`` là chi phí bỏ lọt **của từng giao dịch** — thường là chính ``Amount``: để lọt
+    một vụ 0,76 không đắt bằng để lọt một vụ 1.097. Chỉ giá trị ở dòng gian lận được dùng.
+    Cài bằng tổng cộng dồn trên điểm đã sắp, O(log n) mỗi ngưỡng như ``sweep``.
+    """
+    y_true, y_scores = _as_arrays(y_true, y_scores)
+    fn_costs = np.asarray(fn_costs, dtype="float64").ravel()
+    if fn_costs.shape != y_scores.shape:
+        raise ValueError(f"fn_costs khác độ dài với y_scores: {fn_costs.shape} vs {y_scores.shape}")
+    positive = y_true == 1
+    order = np.argsort(y_scores[positive], kind="stable")
+    scores = y_scores[positive][order]
+    cumulative = np.concatenate([[0.0], np.cumsum(fn_costs[positive][order])])
+    thresholds = np.asarray(thresholds, dtype="float64").ravel()
+    # Số gian lận có điểm < τ = vị trí chèn bên trái của τ — cùng quy ước "dương khi score >= τ"
+    return cumulative[np.searchsorted(scores, thresholds, side="left")]
 
 
 def confusion_counts(y_true, y_scores, threshold: float) -> tuple[int, int, int, int]:
@@ -183,14 +204,24 @@ def metrics_at_threshold(
     cost_fp: float = DEFAULT_COST_FP,
     sample_fraction: float = TEST_SIZE,
     days: float = DATASET_DAYS,
+    fn_costs=None,
 ) -> ThresholdMetrics:
-    """Toàn bộ chỉ số tại một ngưỡng, gồm cả chi phí kỳ vọng."""
+    """Toàn bộ chỉ số tại một ngưỡng, gồm cả chi phí kỳ vọng.
+
+    ``fn_costs`` (tùy chọn): chi phí bỏ lọt của từng giao dịch thay cho hằng số ``cost_fn``
+    — xem ``missed_cost``.
+    """
     tp, fp, fn, tn = confusion_counts(y_true, y_scores, threshold)
     alerts = tp + fp
 
     precision = tp / alerts if alerts else 0.0
     recall = tp / (tp + fn) if (tp + fn) else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+
+    if fn_costs is None:
+        missed = fn * cost_fn
+    else:
+        missed = float(missed_cost(y_true, y_scores, fn_costs, [threshold])[0])
 
     return ThresholdMetrics(
         threshold=float(threshold),
@@ -202,7 +233,7 @@ def metrics_at_threshold(
         precision=precision,
         recall=recall,
         f1=f1,
-        expected_cost=fn * cost_fn + fp * cost_fp,
+        expected_cost=missed + fp * cost_fp,
         alerts_per_day=alerts_per_day(
             alerts, sample_fraction=sample_fraction, days=days
         ),
@@ -219,8 +250,12 @@ def cost_curve(
     thresholds=None,
     sample_fraction: float = TEST_SIZE,
     days: float = DATASET_DAYS,
+    fn_costs=None,
 ) -> pd.DataFrame:
-    """Bảng ngưỡng × (chi phí, precision, recall, f1, số cảnh báo mỗi ngày)."""
+    """Bảng ngưỡng × (chi phí, precision, recall, f1, số cảnh báo mỗi ngày).
+
+    ``fn_costs`` (tùy chọn): chi phí bỏ lọt của từng giao dịch thay cho hằng số ``cost_fn``.
+    """
     table = sweep(y_true, y_scores, thresholds=thresholds, n_steps=n_steps)
 
     tp = table["tp"].to_numpy()
@@ -237,7 +272,10 @@ def cost_curve(
     table["precision"] = precision
     table["recall"] = recall
     table["f1"] = f1
-    table["expected_cost"] = fn * cost_fn + fp * cost_fp
+    if fn_costs is None:
+        table["expected_cost"] = fn * cost_fn + fp * cost_fp
+    else:
+        table["expected_cost"] = missed_cost(y_true, y_scores, fn_costs, table["threshold"]) + fp * cost_fp
     table["alerts_per_day"] = alerts / sample_fraction / days
     return table
 
@@ -254,6 +292,7 @@ def pick_threshold(
     thresholds=None,
     sample_fraction: float = TEST_SIZE,
     days: float = DATASET_DAYS,
+    fn_costs=None,
 ) -> float:
     """Chọn ngưỡng theo một tiêu chí.
 
@@ -265,12 +304,17 @@ def pick_threshold(
     Tiêu chí
     --------
     ``min_expected_cost``
-        Cực tiểu ``cost_fn × FN + cost_fp × FP``. Mặc định của hệ thống.
+        Cực tiểu ``cost_fn × FN + cost_fp × FP`` (hoặc tổng ``fn_costs`` của các vụ bỏ
+        lọt nếu truyền chi phí theo từng giao dịch). Mặc định của hệ thống.
     ``max_f1``
         Cực đại F1. Dùng khi không ước lượng được chi phí.
     ``min_recall``
         Ngưỡng LỚN NHẤT còn đạt ``recall >= value`` — tức bắt đủ gian lận yêu cầu
         mà sinh ít cảnh báo giả nhất.
+    ``min_precision``
+        Ngưỡng NHỎ NHẤT mà **mọi** ngưỡng từ đó trở lên đều có ``precision >= value``.
+        Precision không đơn điệu theo ngưỡng, nên đòi điều kiện cho cả phần đuôi thay vì
+        lấy điểm đầu tiên chạm mức. Dùng để đặt ngưỡng "đề xuất chặn" của API.
     ``max_alerts_per_day``
         Ngưỡng NHỎ NHẤT mà số cảnh báo mỗi ngày vẫn nằm trong ngân sách ``value``
         — tức tận dụng hết năng lực thẩm định.
@@ -296,6 +340,7 @@ def pick_threshold(
         thresholds=thresholds,
         sample_fraction=sample_fraction,
         days=days,
+        fn_costs=fn_costs,
     )
 
     if criterion == "min_expected_cost":
@@ -313,6 +358,15 @@ def pick_threshold(
             # Không ngưỡng nào đạt: trả ngưỡng thấp nhất, tức recall cao nhất có thể
             return float(table["threshold"].min())
         return float(feasible["threshold"].max())
+
+    if criterion == "min_precision":
+        ordered = table.sort_values("threshold")
+        # Ngưỡng không sinh cảnh báo nào thì không vi phạm gì
+        ok = ((ordered["precision"] >= value) | (ordered["alerts"] == 0)).to_numpy()
+        tail_ok = np.flip(np.logical_and.accumulate(np.flip(ok)))
+        if not tail_ok.any():
+            return float(ordered["threshold"].max())
+        return float(ordered["threshold"].to_numpy()[tail_ok].min())
 
     # max_alerts_per_day
     feasible = table[table["alerts_per_day"] <= value]

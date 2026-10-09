@@ -45,11 +45,24 @@ Mọi hạng mục có mã riêng để trích dẫn chéo giữa các tài li�
 | 1.0 | 2026-09-12 | Bản đầu tiên, tách từ hai tài liệu nháp ở thư mục gốc |
 | 1.1 | 2026-09-12 | Chuyển cơ sở dữ liệu từ SQLite sang PostgreSQL 16: viết lại 06, cập nhật 01, 02, 03, 05, 08, 09, 10 |
 
-## Quan hệ với các tệp ở thư mục gốc
+## Bản nháp ban đầu — `docs/luu-tru/`
 
-Hai tệp dưới đây là bản nháp ban đầu, được giữ lại để tham chiếu. Khi có mâu
-thuẫn, **tài liệu trong `docs/` là bản có hiệu lực**.
+Hai tệp dưới đây là bản nháp ban đầu (trước ở thư mục gốc), được giữ lại để tham chiếu. Khi
+có mâu thuẫn, **tài liệu đánh số trong `docs/` là bản có hiệu lực**.
 
-- `dac-ta-du-an-fraud-detection.md` — bản đặc tả gộp đầu tiên.
-- `docs.md` — hướng dẫn triển khai chi tiết theo lộ trình 3 tuần, nặng về mã mẫu
+- [`luu-tru/dac-ta-du-an-fraud-detection.md`](luu-tru/dac-ta-du-an-fraud-detection.md) — bản đặc tả gộp đầu tiên.
+- [`luu-tru/docs.md`](luu-tru/docs.md) — hướng dẫn triển khai chi tiết theo lộ trình 3 tuần, nặng về mã mẫu
   và giải thích lý thuyết. Vẫn hữu ích như tài liệu học, nhưng không phải đặc tả.
+
+## Đọc nhanh cho người chấm
+
+Không cần đọc hết hơn 7.000 dòng tài liệu. Theo thứ tự:
+
+1. [README](../README.md) — chạy hệ thống trên máy sạch (4 bước).
+2. [04 — Thiết kế mô hình ML](04-thiet-ke-mo-hinh-ml.md) §3.4, §6 — so sánh chiến lược mất cân bằng và
+   chọn ngưỡng theo chi phí, với số thật.
+3. Notebook [06](../notebooks/06_threshold_and_cost.ipynb) mục 6 — chi phí theo số tiền, ngưỡng đề xuất chặn.
+4. [08 — Kế hoạch kiểm thử](08-ke-hoach-kiem-thu.md) §4 — bảng nghiệm thu AC-M, AC-A.
+
+`lenh-chay.md` (lệnh từng giai đoạn) và [TASKS.md](../TASKS.md) (nhật ký làm việc) là tài liệu
+thao tác, không cần đọc để đánh giá kết quả.

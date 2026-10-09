@@ -156,7 +156,8 @@ là có lại. Nhưng **notebook 04 cần nó** để vẽ đường PR, nên đ
 | PR-AUC cao nhất | **0,8549** — `xgboost` + `class_weight` |
 | Riêng 4 tổ hợp `smote_tomek` | 25,7 phút, so với 7,6 phút của `smote` → **đắt hơn 18,2 phút** mà kết quả giống hệt |
 
-Dòng cuối là phát hiện 3 của giai đoạn 3: bước Tomek xoá đúng 0 cặp ở tỷ lệ 1:600.
+Dòng cuối là phát hiện 3 của giai đoạn 3: bước Tomek xoá đúng 0 cặp — vì SMOTE chạy trước đã xoá
+hết 21 cặp Tomek có trong dữ liệu gốc ([04 §3.4](04-thiet-ke-mo-hinh-ml.md)).
 Xem ghi chú giai đoạn 3 trong [TASKS.md](../TASKS.md).
 
 #### Điều kiện dừng của T-23
@@ -436,8 +437,8 @@ Không notebook nào ghi vào `models/`. Việc đó là của notebook 08 (T-35
 | Mốc | Giá trị |
 |---|---|
 | τ\* chọn trên out-of-fold (dò trên mọi điểm) | **0,02317** (lưới 200 điểm: 0,02321) |
-| Test tại τ\* | TP 77, FP 38, FN 18, chi phí 2.390 USD |
-| Test tại 0,5 | TP 74, FP 4, FN 21, chi phí 2.586 USD |
+| Test tại τ\* | TP 77, FP 38, FN 18, chi phí 2.390 EUR |
+| Test tại 0,5 | TP 74, FP 4, FN 21, chi phí 2.586 EUR |
 | Hiệu chi phí τ\* − 0,5 | test −197 [−676, +160]; OOF −707 [−1.513, −24] |
 | τ\* không đổi trên dải tỷ lệ | 20:1 → 50:1 |
 | SHAP top 3 | V14, V4, V12 |
@@ -796,8 +797,15 @@ một dòng bằng 12 luồng tốn chi phí đồng bộ và tranh CPU: p95 c�
 1 luồng cho **cùng từng bit** trên 56.746 giao dịch (chỉ huấn luyện mới phụ thuộc số luồng), và p95
 còn 45,6 ms. `api/loader.py` đặt `n_jobs=1` sau khi nạp.
 
-**Biên 3τ là số thực máy.** `3 × 0,05 = 0,15000000000000002`, nên điểm 0,15 thuộc dải `high`. Trình
-duyệt tính theo cùng chuẩn IEEE 754 nên hai bên vẫn khớp; ca kiểm thử dùng `3 * 0.05` làm biên.
+**Biên của dải `critical`/`block` không còn là 3τ** (đổi 2026-10-09). Nay là `max(τ, τ_chặn)`, với
+τ_chặn ≈ 0,9735 chọn theo precision ≥ 95% trên out-of-fold — luật 3τ chặn tự động 19 khách hợp lệ của
+tập kiểm thử ([05 §2](05-thiet-ke-api.md), notebook 06 §6.2).
+
+**`/score` p95 còn khoảng 20 ms** (đổi 2026-10-09). Hai phần ba thời gian cũ là chi phí dựng DataFrame
+trong `ColumnTransformer` và lớp sklearn của XGBoost. `api/serving.py` (`FastScorer`) làm cùng phép
+tính trên numpy và `Booster.inplace_predict`; loader đối chiếu **từng bit** với pipeline lúc khởi động.
+Ba lần đo: p95 phía máy chủ 18,7 / 24,1 / 21,0 ms (trước đó 60,6 / 51,3 / 49,9 ms — trượt NFR-01 hai
+lần). Ca đo NFR-01 đánh dấu `perf`, không chạy trong lượt `pytest` mặc định: `pytest -m perf`.
 
 **`TestClient` đọc hết thân phản hồi rồi mới trả.** Ca phát lại trong pytest phát giờ cuối của ngày
 2 ở tốc độ 3.600. Ca 3 phút phải chạy trên uvicorn thật (§7.4).

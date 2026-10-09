@@ -74,6 +74,12 @@ không phải hằng số 0,5.
   tại thời điểm chấm điểm.
 - 492 mẫu dương là rất ít: khoảng tin cậy của mọi chỉ số sẽ rộng. Bắt buộc báo
   cáo khoảng tin cậy bootstrap, không báo cáo con số trần trụi.
+- Hai điều bộ dữ liệu **không ghi** mà dự án phải quy ước: đơn vị của `Amount` (quy
+  ước EUR) và giờ bắt đầu của `Time` (giả định 00:00, nên "giờ 2h" là giờ suy ra) —
+  [02 §2, DS-03](02-dac-ta-du-lieu.md).
+- Chi phí bỏ lọt là **giả định**. Tính theo số tiền từng vụ thay cho hằng số 122,21 EUR
+  thì khoản "tiết kiệm" khi hạ ngưỡng 0,5 → τ\* đổi dấu ([04 §6](04-thiet-ke-mo-hinh-ml.md),
+  notebook 06 §6.1).
 
 ## 4. Các bên liên quan
 

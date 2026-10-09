@@ -163,7 +163,8 @@ Kiểm tra hiện vật đã đủ:
 
 ```bash
 ls models/
-# model.joblib  explainer.joblib  metrics.json  threshold.json
+# model.joblib  explainer.joblib  metrics.json  threshold.json  oof_scores.npz
+# (API không cần explainer.joblib — chỉ notebook và kiểm thử dùng)
 
 pytest tests/test_artifacts.py      # 7 ca tích hợp kiểm chính các tệp vừa sinh
 ```
@@ -286,8 +287,9 @@ Thiếu hiện vật trong `models/` thì các ca cần mô hình cũng bỏ qua
 (`test_threshold_parity.py`) chạy `web/threshold.js` bằng Node.js; máy không có `node` trong `PATH`
 thì ca đó tự bỏ qua.
 
-Toàn bộ khoảng 3 phút khi có PostgreSQL và hiện vật; lâu nhất là ca NFR-01 (1.000 lời gọi
-`/score`) và ca 10.000 dòng của T-46.
+Toàn bộ khoảng 3 phút khi có PostgreSQL và hiện vật; lâu nhất là ca 10.000 dòng của T-46. Ca đo
+độ trễ NFR-01 (1.000 lời gọi `/score`) mang dấu `perf` và **không** chạy trong lượt mặc định, vì kết
+quả dao động theo tải CPU của máy; chạy riêng bằng `pytest -m perf` (khoảng 30 giây).
 
 Chạy `pytest` trước mỗi commit. Chi tiết các ca ở
 [08 — Kế hoạch kiểm thử](08-ke-hoach-kiem-thu.md).

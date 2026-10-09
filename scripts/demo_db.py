@@ -6,7 +6,7 @@
     python scripts/demo_db.py reset      # xóa giao dịch, thẩm định và ngưỡng người dùng đặt
     python scripts/demo_db.py status     # đếm dòng trong ba bảng
 
-``seed`` gọi API (mặc định http://localhost:8000/api/v1, đổi bằng ``--api``) nên đi đúng đường
+``seed`` gọi API (mặc định http://127.0.0.1:8000/api/v1, đổi bằng ``--api``) nên đi đúng đường
 của giao diện: chấm bằng mô hình đang phục vụ, ghi bằng ``COPY``, ``threshold_used`` lấy theo
 ngưỡng hiện hành. Ba phần:
 
@@ -39,7 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.config import PROJECT_ROOT, SAMPLE_POOL_PATH, TEST_SET_PATH  # noqa: E402
 from src.features import RAW_REQUIRED_COLUMNS  # noqa: E402
 
-DEFAULT_API = "http://localhost:8000/api/v1"
+DEFAULT_API = "http://127.0.0.1:8000/api/v1"
 DEFAULT_DUMP = PROJECT_ROOT / "backup" / "fraud-demo.dump"
 CONTAINER_DUMP = "/tmp/fraud-demo.dump"
 PSQL = ["docker", "compose", "exec", "-T", "db", "psql", "-U", "fraud", "-d", "fraud", "-v", "ON_ERROR_STOP=1"]

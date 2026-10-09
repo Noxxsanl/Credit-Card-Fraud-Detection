@@ -5,6 +5,11 @@ gian nén ``speed`` lần (60: một phút dữ liệu mỗi giây). Máy chủ 
 nào ngoài con trỏ của chính kết nối; tạm dừng là ngắt kết nối, tiếp tục là mở lại với
 ``start`` bằng đồng hồ mô phỏng lúc dừng.
 
+Điểm rủi ro do **mô hình chấm lúc giao dịch "đến"**, cùng đường với ``/score``
+(``build_features`` → ``FastScorer``), theo từng mẻ nhỏ gồm những giao dịch đã tới giờ trên
+đồng hồ mô phỏng — không đọc cột ``risk_score`` tính sẵn trong tệp parquet. Cột đó chỉ còn
+dùng để ``api/loader.py`` kiểm mô hình lúc khởi động.
+
 Mỗi giao dịch được ghi vào bảng ``transactions`` (``source = 'replay'``) theo mẻ 100
 dòng, không giữ một giao dịch cơ sở dữ liệu mở suốt phiên (06 §4.2). Mã giao dịch tất
 định ``RP-<dòng>`` và ghi bằng ``ON CONFLICT DO NOTHING``: phát lại lần hai không nhân
@@ -28,7 +33,7 @@ from src.features import RAW_REQUIRED_COLUMNS
 
 from ..config import REPLAY_WRITE_BATCH
 from ..loader import DAY_TWO_START, Artifacts
-from .scoring import insert_rows, risk_band, transaction_rows
+from .scoring import insert_rows, risk_band, score_frame, transaction_rows
 
 log = logging.getLogger("api")
 
@@ -37,6 +42,8 @@ STATS_EVERY_SECONDS = 1.0
 #: Đọc lại ngưỡng hiện hành theo nhịp này, để đổi ngưỡng giữa chừng có tác dụng ngay
 THRESHOLD_REFRESH_SECONDS = 5.0
 DAY_SECONDS = 86_400
+#: Chấm tối đa chừng này giao dịch một lần gọi mô hình — ở tốc độ cao không dồn cả giờ vào một mẻ
+SCORE_BATCH_LIMIT = 500
 
 
 def day_two(loaded: Artifacts) -> pd.DataFrame:
@@ -63,7 +70,7 @@ async def stream(loaded: Artifacts, *, speed: float, start: float, read_threshol
     batch_id = f"replay-{secrets.token_hex(3)}"
     tau = await run_in_threadpool(read_threshold)
     offsets = rows["offset"].to_numpy(dtype="float64")
-    scores = rows["risk_score"].to_numpy(dtype="float64")
+    scores = np.empty(total, dtype="float64")       # điền dần khi giao dịch tới giờ
     amounts = rows["Amount"].to_numpy(dtype="float64")
     test_rows = rows["test_row"].to_numpy()
     raw = rows[RAW_REQUIRED_COLUMNS].reset_index(drop=True)
@@ -71,7 +78,7 @@ async def stream(loaded: Artifacts, *, speed: float, start: float, read_threshol
 
     started = time.monotonic()
     last_stats = last_refresh = started
-    processed = alerts = 0
+    processed = alerts = scored = 0
     pending: list[int] = []
 
     def sim_now() -> float:
@@ -88,6 +95,13 @@ async def stream(loaded: Artifacts, *, speed: float, start: float, read_threshol
             return
         chunk, pending = pending, []
         await run_in_threadpool(write, _rows(chunk))
+
+    def score_due(first: int) -> int:
+        """Chấm mọi giao dịch từ ``first`` đã tới giờ trên đồng hồ mô phỏng (ít nhất một)."""
+        due = int(np.searchsorted(offsets, sim_now(), side="right"))
+        last = min(max(due, first + 1), first + SCORE_BATCH_LIMIT, total)
+        scores[first:last] = score_frame(loaded, raw.iloc[first:last])
+        return last
 
     def _rows(positions: list[int]) -> list[tuple]:
         idx = np.asarray(positions)
@@ -111,13 +125,16 @@ async def stream(loaded: Artifacts, *, speed: float, start: float, read_threshol
             if time.monotonic() - last_refresh >= THRESHOLD_REFRESH_SECONDS:
                 last_refresh = time.monotonic()
                 tau = await run_in_threadpool(read_threshold)
+            if i >= scored:
+                scored = await run_in_threadpool(score_due, i)
 
             score = float(scores[i])
             is_alert = score >= tau
             processed += 1
             alerts += int(is_alert)
             yield sse("alert" if is_alert else "transaction", {
-                "id": f"RP-{test_rows[i]:05d}", "risk_score": score, "risk_band": risk_band(score, tau),
+                "id": f"RP-{test_rows[i]:05d}", "risk_score": score,
+                "risk_band": risk_band(score, tau, loaded.block_threshold),
                 "amount": float(amounts[i]), "sim_time": clock(offsets[i]), "sim_seconds": float(offsets[i]),
             })
             pending.append(i)

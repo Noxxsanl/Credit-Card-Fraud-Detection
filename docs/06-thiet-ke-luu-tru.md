@@ -468,9 +468,9 @@ Kích thước đo được: **1,6 MB**, trong đó `test_scores` chiếm 1,46 M
 | Tệp | Nội dung | Cách dùng |
 |---|---|---|
 | `model.joblib` (1,2 MB) | `imblearn.pipeline.Pipeline` hai bước: `preprocess` (`ColumnTransformer`, `RobustScaler` cho `Amount`) → `clf` (`XGBClassifier`) | `model.predict_proba(build_features(df))[:, 1]`. `feature_names_in_` bằng `FEATURE_ORDER` |
-| `explainer.joblib` (4,2 MB) | `shap.TreeExplainer` của **riêng** bước `clf` | đầu vào là `model[:-1].transform(build_features(df))`, **không** phải `build_features(df)`. Giá trị SHAP ở thang log-odds; `expected_value + Σ SHAP` bằng margin của booster |
+| `explainer.joblib` (4,2 MB) | `shap.TreeExplainer` của **riêng** bước `clf` | đầu vào là `model[:-1].transform(build_features(df))`, **không** phải `build_features(df)`. Giá trị SHAP ở thang log-odds; `expected_value + Σ SHAP` bằng margin của booster. Notebook 07/08 và kiểm thử dùng; **API không nạp** từ 2026-10-09 — nó tính SHAP bằng `pred_contribs` của XGBoost, trùng từng bit với tệp này (`api/serving.py`) |
 | `oof_scores.npz` (0,8 MB) | `y_true` (int8), `y_score` (float32, giữ nguyên kiểu của `predict_proba`), `train_fraction`, `days` — 226.980 điểm out-of-fold của tập huấn luyện | `POST /threshold/optimize` chọn ngưỡng trên đây (ML-08); với chi phí mặc định ra đúng τ\*. Dấu vân tay khớp `metrics.json → fingerprint.oof_scores_sha256` (thêm ở giai đoạn 7) |
-| `test_set.parquet` (15,9 MB) | 32 cột: 30 cột thô, `Class`, `risk_score` (do notebook 08 thêm) | phát lại (UI-05) theo thứ tự `Time`; `risk_score` trùng từng bit với `metrics.json → test_scores.y_score` |
+| `test_set.parquet` (15,9 MB) | 32 cột: 30 cột thô, `Class`, `risk_score` (do notebook 08 thêm) | phát lại (UI-05) theo thứ tự `Time` — điểm do mô hình chấm lại lúc phát; `risk_score` trùng từng bit với `metrics.json → test_scores.y_score`, API dùng nó để kiểm mô hình lúc khởi động |
 
 Hai tệp `.joblib` là pickle: nạp được khi phiên bản `scikit-learn`, `imbalanced-learn`, `xgboost`,
 `shap` khớp với `metrics.json → environment.packages`. Lệch phiên bản thì chạy lại notebook 08

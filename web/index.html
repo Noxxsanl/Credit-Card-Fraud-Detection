@@ -357,9 +357,8 @@
             <p class="hint">
               Thanh trượt theo thang log — vùng quyết định trải từ 0,0005 tới 0,97.
               Bàn phím: ← → bước nhỏ, PgUp/PgDn bước lớn, Home/End hai đầu; hoặc gõ số vào ô bên cạnh.
-              Mọi con số dưới đây tính ngay trong trình duyệt:
-              <span x-text="calcMs === null ? '—' : fmt.num(calcMs, 2) + ' ms'"></span> tính toán,
-              <span x-text="latencyMs === null ? '—' : fmt.num(latencyMs, 0) + ' ms'"></span> tới lúc vẽ xong (yêu cầu dưới 200 ms).
+              Mọi con số dưới đây tính ngay trong trình duyệt, không gọi mạng: từ lúc kéo tới lúc vẽ xong
+              <span x-text="latencyMs === null ? '—' : fmt.num(latencyMs, 0) + ' ms'"></span> (yêu cầu dưới 200 ms).
             </p>
           </div>
 

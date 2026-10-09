@@ -37,7 +37,7 @@ tệp hiện vật**.
 │                   ┌─────────────────┐          ┌──────────────┐│
 │                   │ models/ (chỉ đọc)│          │ db           ││
 │                   │ model.joblib     │          │ PostgreSQL 16││
-│                   │ explainer.joblib │          │ transactions ││
+│                   │ oof_scores.npz   │          │ transactions ││
 │                   │ metrics.json     │          │ reviews      ││
 │                   │ threshold.json   │          │ settings     ││
 │                   └─────────────────┘          └──────┬───────┘│
@@ -116,7 +116,7 @@ mà không cần dựng máy chủ HTTP. Route chỉ còn là lớp vỏ mỏng.
 
 | Trạng thái | Nơi giữ | Vòng đời |
 |---|---|---|
-| Mô hình, explainer, metrics | Bộ nhớ tiến trình API, nạp lúc startup | Suốt vòng đời tiến trình |
+| Mô hình, metrics, điểm out-of-fold | Bộ nhớ tiến trình API, nạp lúc startup (SHAP tính bằng `pred_contribs` của XGBoost, không cần `explainer.joblib`) | Suốt vòng đời tiến trình |
 | Ngưỡng hiện hành, tham số chi phí | Bảng `settings` trong PostgreSQL | Bền vững qua khởi động lại |
 | Giao dịch đã chấm điểm | Bảng `transactions` | Bền vững |
 | Quyết định thẩm định | Bảng `reviews` | Bền vững |
@@ -193,7 +193,7 @@ POST /api/v1/explain {transaction_id}
    ▼
 services/explaining.py
    ├─ đọc đặc trưng từ transactions
-   ├─ explainer.shap_values(x)           ← 50–200 ms
+   ├─ FastScorer.contributions(x)        ← pred_contribs của XGBoost, ~15 ms
    ├─ sắp xếp theo |giá trị SHAP|
    └─ lấy 5 yếu tố dương + 3 yếu tố âm, kèm base_value
 ```
@@ -372,6 +372,6 @@ notebook 02, 06, 07, 08. Kế hoạch bổ sung nằm ở [09](09-ke-hoach-trien
 | NFR-02 thông lượng | Chấm điểm theo lô vector hóa, một lời gọi `predict_proba` cho cả DataFrame; ghi xuống cơ sở dữ liệu bằng `COPY` thay vì `INSERT` từng dòng |
 | NFR-03 thanh trượt | AR-03 — chỉ so sánh mảng điểm đã tính sẵn, không chạy lại mô hình |
 | NFR-04 khởi động | Hiện vật gắn volume, không tải gì qua mạng; nạp và kiểm hiện vật mất 2,3 giây; ảnh `api` biên dịch sẵn `.pyc` của cả thư viện chuẩn; healthcheck của `db` thăm mỗi giây lúc khởi động. Đo được: lần đầu 13,7–14,9 giây, các lần sau 11,1–11,5 giây ([06 §7.2](06-thiet-ke-luu-tru.md)) |
-| NFR-05 bộ nhớ | Tiến trình API chỉ giữ mô hình, explainer và mảng điểm của tập kiểm thử; container `db` tính riêng, khoảng 250 MB |
+| NFR-05 bộ nhớ | Tiến trình API chỉ giữ mô hình, mảng điểm của tập kiểm thử và out-of-fold; container `db` tính riêng, khoảng 250 MB |
 | NFR-07 tái lập | `random_state=42` ở mọi bước ngẫu nhiên; ghim phiên bản thư viện |
 | NFR-11 truy vết | `model_version` lưu trong `threshold.json`, gắn vào mọi phản hồi và mọi dòng `transactions` |

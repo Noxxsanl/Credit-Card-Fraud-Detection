@@ -28,23 +28,26 @@ from src.features import RAW_REQUIRED_COLUMNS
 @pytest.mark.parametrize("score, band, decision", [
     (0.0, "low", "allow"), (0.0249, "low", "allow"),
     (0.025, "medium", "allow"), (0.0499, "medium", "allow"),
-    (0.05, "high", "review"), (0.1499, "high", "review"),
-    (3 * 0.05, "critical", "block"), (1.0, "critical", "block"),
+    (0.05, "high", "review"), (0.15, "high", "review"), (0.8999, "high", "review"),
+    (0.9, "critical", "block"), (1.0, "critical", "block"),
 ])
 def test_tc51_risk_band_follows_the_contract(score, band, decision):
-    """TC-51: bốn dải với ngưỡng 0,05 theo bảng ở 05 §2, kể cả đúng tại biên.
+    """TC-51: bốn dải với τ = 0,05 và ngưỡng đề xuất chặn 0,9 theo bảng ở 05 §2, kể cả đúng
+    tại biên. Mức chặn là một ngưỡng riêng chọn theo precision, không còn là 3τ."""
+    assert scoring.risk_band(score, 0.05, 0.9) == band
+    assert scoring.decision(score, 0.05, 0.9) == decision
 
-    Biên 3τ so bằng số thực máy: 3 × 0,05 = 0,15000000000000002, nên điểm 0,15 gõ tay thuộc dải
-    high. Trình duyệt tính theo cùng chuẩn IEEE 754, nên hai bên vẫn khớp nhau (TC-12).
-    """
-    assert scoring.risk_band(score, 0.05) == band
-    assert scoring.decision(score, 0.05) == decision
+
+def test_block_never_starts_below_the_alert_threshold():
+    """Người dùng nâng τ vượt mức chặn: mọi cảnh báo đều là đề xuất chặn, không còn dải review."""
+    assert scoring.decision(0.5, 0.6, 0.4) == "allow" and scoring.risk_band(0.5, 0.6, 0.4) == "medium"
+    assert scoring.decision(0.6, 0.6, 0.4) == "block" and scoring.risk_band(0.6, 0.6, 0.4) == "critical"
 
 
 def test_bands_are_vectorised_consistently():
     scores = np.linspace(0, 1, 1001)
-    bands = scoring.risk_bands(scores, 0.05)
-    assert [scoring.risk_band(s, 0.05) for s in scores] == list(bands)
+    bands = scoring.risk_bands(scores, 0.05, 0.9)
+    assert [scoring.risk_band(s, 0.05, 0.9) for s in scores] == list(bands)
     counts = scoring.distribution(bands)
     assert counts == {b: int((bands == b).sum()) for b in scoring.BANDS} and sum(counts.values()) == 1001
     assert counts["low"] == 25 and counts["medium"] == 25
@@ -90,6 +93,37 @@ def test_tc53_scoring_10000_is_well_under_30_seconds(loaded, sample):
     print(f"\nTC-53: chấm 10.000 giao dịch trong {elapsed * 1000:.0f} ms")
     assert elapsed < 30
     assert np.array_equal(scores, loaded.s_test[:10_000])       # đúng từng bit với metrics.json
+
+
+def test_fast_path_equals_the_full_pipeline_bit_for_bit(loaded):
+    """``FastScorer`` (api/serving.py) phải là CÙNG phép tính với ``model.predict_proba`` trên cả
+    tập kiểm thử, không phải phép gần đúng — loader chỉ đối chiếu 1/50 lúc khởi động."""
+    from src.features import build_features
+
+    features = build_features(loaded.test_set)
+    full = loaded.model.predict_proba(features)[:, 1].astype("float64")
+    assert np.array_equal(loaded.scorer.predict(features), full)
+    margin = loaded.model[-1].predict(loaded.model[:-1].transform(features), output_margin=True)
+    assert np.array_equal(loaded.scorer.margin(features), margin.astype("float64"))
+
+
+def test_block_threshold_is_chosen_by_precision_on_out_of_fold(loaded):
+    """Ngưỡng đề xuất chặn: mọi ngưỡng từ đó trở lên có precision ≥ 95% trên out-of-fold."""
+    from api.config import BLOCK_MIN_PRECISION
+    from src.threshold import cost_curve
+
+    tau_block = loaded.block_threshold
+    table = cost_curve(loaded.oof["y_true"], loaded.oof["y_score"], thresholds=loaded.oof_candidates)
+    tail = table[(table["threshold"] >= tau_block) & (table["alerts"] > 0)]
+    assert len(tail) and (tail["precision"] >= BLOCK_MIN_PRECISION).all()
+    assert loaded.default_threshold < tau_block < 1
+    # Trên tập kiểm thử, ở τ*: dải review còn chứa gian lận thật để người thẩm định bắt (luật cũ
+    # 3τ để dải này rỗng gian lận), và chặn tự động rất ít khách hợp lệ
+    y, s, tau = loaded.y_test, loaded.s_test, loaded.default_threshold
+    decided = scoring.decisions(s, tau, tau_block)
+    assert y[decided == "review"].sum() > 0
+    blocked = decided == "block"
+    assert y[blocked].mean() >= 0.95
 
 
 def _rows(loaded, frame, prefix):

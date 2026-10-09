@@ -22,8 +22,8 @@ Mỗi việc có điều kiện *xong là khi* — chưa đạt điều kiện �
 | 7. API | 11 | 11 | ✅ |
 | 8. Giao diện | 7 | 7 | ✅ |
 | 9. Đóng gói | 5 | 5 | ✅ |
-| 10. Báo cáo và bảo vệ | 5 | 0 | |
-| **Tổng** | **67** | **62** | **93%** |
+| 10. Báo cáo và bảo vệ | 5 | 3 | 🟡 còn T-66, T-67 |
+| **Tổng** | **67** | **65** | **97%** |
 
 ---
 
@@ -179,10 +179,16 @@ Không được dùng con số trung bình gộp cả 4 mô hình (−0,0775) v�
 
 **3. SMOTE + Tomek KHÔNG khác SMOTE, mà ngốn 40% thời gian lưới.** Mảng điểm out-of-fold
 **giống hệt nhau tới từng phần tử** ở cả 4 mô hình — bước Tomek xoá đúng 0 cặp. Chi phí
-**1.089 giây = 18,2 phút** trên tổng 45,7 phút, đổi lại không một chữ số nào thay đổi. Ở tỷ lệ
-1:600, sau khi SMOTE nâng lớp dương lên 1:10 thì vùng biên vẫn quá thưa để hai điểm khác lớp
-thành láng giềng gần nhất của nhau. **Khuyến nghị bỏ S5 khỏi các lần chạy lại về sau**, nhưng
-giữ trong bảng báo cáo vì kết quả âm tính này tự nó là phát hiện.
+**1.089 giây = 18,2 phút** trên tổng 45,7 phút, đổi lại không một chữ số nào thay đổi.
+Lý do — kiểm lại trên fold 1 của lưới (2026-10-09): dữ liệu gốc **có** cặp Tomek. Trước SMOTE,
+`TomekLinks` tìm được 21 cặp (xoá 42 dòng, trong đó 21 vụ gian lận); sau SMOTE còn 0. Chính SMOTE
+xoá chúng: mỗi vụ gian lận thật được dùng làm gốc để sinh khoảng 59 điểm tổng hợp trên các đoạn nối
+nó với láng giềng cùng lớp, nên láng giềng gần nhất của nó trở thành một điểm gian lận tổng hợp —
+không còn cặp khác lớp nào là láng giềng gần nhất **của nhau**. `SMOTETomek` chạy SMOTE trước, Tomek
+sau, nên ở tỷ lệ này bước Tomek luôn vô tác dụng; muốn Tomek có tác dụng phải dọn **trước** khi sinh mẫu.
+(Bản ghi chú đầu tiên giải thích là "vùng biên quá thưa" — sai: trước SMOTE có 21 cặp.)
+**Khuyến nghị bỏ S5 khỏi các lần chạy lại về sau**, nhưng giữ trong bảng báo cáo vì kết quả âm
+tính này tự nó là phát hiện.
 
 **4. Random Forest hoà PR-AUC nhưng chỉ có 200–269 điểm rủi ro khác nhau** (XGBoost: ~222.000,
 tức gấp **1.000 lần**). RF 300 cây chỉ phát ra tối đa 301 giá trị `k/300`. Đây là cùng vấn đề
@@ -310,13 +316,13 @@ phẳng: mọi τ ∈ [0,013; 0,140] đều nằm trong 5% cực tiểu.
 
 | Ngưỡng | Cảnh báo/ngày | TP | FP | FN | Precision | Recall | Chi phí |
 |---|---|---|---|---|---|---|---|
-| 0,5 (mặc định) | 195 | 74 | 4 | 21 | 0,949 | 0,779 | 2.586 USD |
-| **τ\* = 0,0232** | **287** | **77** | **38** | **18** | **0,670** | **0,811** | **2.390 USD** |
-| τ cho recall ≥ 90% | 2.007 | 83 | 720 | 12 | 0,103 | 0,874 | 5.067 USD |
-| τ cho 200 cảnh báo/ngày | 175 | 69 | 1 | 26 | 0,986 | 0,726 | 3.182 USD |
+| 0,5 (mặc định) | 195 | 74 | 4 | 21 | 0,949 | 0,779 | 2.586 EUR |
+| **τ\* = 0,0232** | **287** | **77** | **38** | **18** | **0,670** | **0,811** | **2.390 EUR** |
+| τ cho recall ≥ 90% | 2.007 | 83 | 720 | 12 | 0,103 | 0,874 | 5.067 EUR |
+| τ cho 200 cảnh báo/ngày | 175 | 69 | 1 | 26 | 0,986 | 0,726 | 3.182 EUR |
 
-*"Hạ ngưỡng từ 0,5 xuống τ\* bắt thêm 3 vụ, đổi lại 34 cảnh báo giả, tiết kiệm ròng 197 USD"*
-(khoảng 490 USD/ngày trên toàn luồng). **Trên tập test, khoảng tin cậy của khoản tiết kiệm chứa 0**
+*"Hạ ngưỡng từ 0,5 xuống τ\* bắt thêm 3 vụ, đổi lại 34 cảnh báo giả, tiết kiệm ròng 197 EUR"*
+(khoảng 490 EUR/ngày trên toàn luồng). **Trên tập test, khoảng tin cậy của khoản tiết kiệm chứa 0**
 (−197 [−676, +160]). Trên OOF với 378 gian lận thì không chứa 0 (−707 [−1.513, −24]). Báo cáo phải
 viết đúng như vậy. Ngưỡng 0,5 không tệ như 04 §6.1 dự báo, vì `scale_pos_weight` đã đẩy điểm lên.
 Có thêm `bootstrap_threshold_diff()` trong `src/evaluate.py` để có khoảng tin cậy cho câu diễn giải.
@@ -725,17 +731,63 @@ docs/06 §7, docs/08 §2.8, §4.4, §5, docs/10 §1, §2.2, §4.1, §6, §7, §9
 
 ---
 
+## Rà soát sau giai đoạn 9 (2026-10-09)
+
+Một lượt rà soát toàn dự án, ngoài kế hoạch 67 việc. Mọi điểm dưới đây đã sửa, trừ báo cáo
+(giai đoạn 10).
+
+| # | Vấn đề — bằng chứng lúc rà soát | Đã làm | Kết quả kiểm |
+|---|---|---|---|
+| 1 | Giải thích Tomek ở giai đoạn 3 sai ("vùng biên quá thưa") | Đo lại trên fold 1: trước SMOTE có 21 cặp Tomek, sau SMOTE còn 0 — chính SMOTE xoá chúng. Sửa ở ghi chú giai đoạn 3, 04 §3.4, lenh-chay §3, notebook 04 §8 | — |
+| 2 | Chi phí bỏ lọt cố định 122,21 trong khi 36% gian lận ≤ 1 EUR; 122,21 tính trên dữ liệu thô | `fn_costs` (chi phí theo từng giao dịch) trong `src/threshold.py`; notebook 06 §6.1 | Theo số tiền, τ\* **đắt hơn** 0,5 trên tập kiểm thử: +160 [+103; +217] EUR. Con số chỉ-train 115,94 cho cùng τ\*. τ mặc định giữ nguyên — quyết định nghiệp vụ |
+| 3 | Luật `block` ≥ 3τ: dải review không có vụ gian lận nào, chặn tự động 19 khách hợp lệ (tập kiểm thử) | τ_chặn chọn theo precision ≥ 95% trên OOF (`min_precision`), 05 §2, notebook 06 §6.2 | τ_chặn = 0,9735; tập kiểm thử: chặn 69 gian lận + 1 hợp lệ, review có 8 gian lận |
+| 4 | NFR-01 trượt 2/3 lần đo (p95 60,6 / 51,3 / 49,9 ms) | `api/serving.py` (`FastScorer`, đối chiếu từng bit với pipeline lúc nạp); `build_features` dựng bằng numpy; ca đo mang dấu `perf` | p95 18,7 / 24,1 / 21,0 ms |
+| 5 | `requirements.txt` chỉ ghi `>=` — cách B của README dễ gãy | Ghim `==` đúng `metrics.json → environment`; 2 ca kiểm thử canh | — |
+| 6 | USD và EUR lẫn lộn giữa tài liệu và giao diện | Quy ước EUR (02 §2), thay ở docs, TASKS, notebook | — |
+| 7 | Giả định `Time = 0` là 00:00 không ghi ở đâu | 02 DS-03, docstring `hour_of_day`, 00 §3.3 | Sáu giờ vắng nhất là 1h–6h |
+| 8 | Ba cổng mở ra mọi địa chỉ, mật khẩu DB viết cứng | `BIND_ADDRESS` (mặc định 127.0.0.1), `POSTGRES_PASSWORD`; client Python dùng 127.0.0.1 | Quét IP LAN: 3000, 8000, 5433 đều đóng |
+| 9 | Phát lại đọc điểm tính sẵn, không chạy mô hình | Chấm theo mẻ khi giao dịch tới giờ mô phỏng | — |
+| 10 | `app.py` trỏ `best_model.pkl` không tồn tại; README dán kèm trích dẫn lạ; log và tệp `_smoke` trong git; đặc tả cũ ở gốc; 37 tệp CRLF; LightGBM không dùng | Viết lại `app.py` (AppTest chạy sạch); viết lại đầu README; `git rm --cached`; `docs/luu-tru/`; `.gitattributes`; bỏ LightGBM | — |
+| 11 | Ảnh `api` 1,46 GB | SHAP bằng `pred_contribs` của XGBoost (trùng từng bit `explainer.joblib`), bỏ shap khỏi ảnh | 1,15 GB |
+| 12 | Không có phân tích calibration | Notebook 06 §6.3 | Brier tốt hơn 4 lần; lệch ở hai đầu |
+
+**Không làm:** giữ cả hai bản giao diện — `web/` là đường dự phòng khi mạng chặn npm (README, "Khi gặp
+lỗi"); bỏ nó ngay trước buổi bảo vệ là tăng rủi ro.
+
+**Mang sang giai đoạn 10 (bổ sung):**
+
+- Báo cáo phải nêu: τ\* chỉ tối ưu dưới giả định chi phí cố định — tính theo số tiền thì khoản tiết
+  kiệm đổi dấu (notebook 06 §6.1); quy ước EUR và giả định `Time = 0`; điểm rủi ro không phải xác suất
+  ở hai đầu (06 §6.3).
+- Kịch bản demo T-66: đoạn "kéo 0,5 → τ\*, chi phí giảm" chỉ đúng với chi phí cố định — nói rõ giả
+  định khi trình diễn, hoặc trình diễn việc đổi chi phí bỏ lọt (AC-A5).
+- Cách nộp hiện vật vẫn chưa chốt.
+- Commit lần tới chạy `git add --renormalize .` để 37 tệp CRLF chuyển sang LF theo `.gitattributes`.
+
+---
+
 ## Giai đoạn 10 — Báo cáo và bảo vệ (ngày 21)
 
-- [ ] **T-63** Viết `reports/bao-cao.md` theo dàn ý [docs/09 §5](docs/09-ke-hoach-trien-khai.md) — *xong là khi:* phần 6 (so sánh chiến lược) và phần 8 (ngưỡng và chi phí) là hai phần dài nhất.
-- [ ] **T-64** Viết phần hạn chế — *xong là khi:* nêu đủ ba điều: V1–V28 là PCA nên không diễn giải được, dữ liệu chỉ hai ngày tháng 9/2013, và 492 mẫu dương làm khoảng tin cậy rất rộng (AC-D2).
-- [ ] **T-65** Ghi nguồn dữ liệu và giấy phép DbCL v1.0 — *xong là khi:* có trích dẫn Kaggle mlg-ulb (AC-D5).
+- [x] **T-63** Viết `reports/bao-cao.md` theo dàn ý [docs/09 §5](docs/09-ke-hoach-trien-khai.md) — *xong là khi:* phần 6 (so sánh chiến lược) và phần 8 (ngưỡng và chi phí) là hai phần dài nhất.
+- [x] **T-64** Viết phần hạn chế — *xong là khi:* nêu đủ ba điều: V1–V28 là PCA nên không diễn giải được, dữ liệu chỉ hai ngày tháng 9/2013, và 492 mẫu dương làm khoảng tin cậy rất rộng (AC-D2).
+- [x] **T-65** Ghi nguồn dữ liệu và giấy phép DbCL v1.0 — *xong là khi:* có trích dẫn Kaggle mlg-ulb (AC-D5).
 - [ ] **T-66** Chuẩn bị kịch bản demo 10 phút — *xong là khi:* đã diễn thử một lần trọn vẹn, gồm đoạn kéo thanh trượt ngưỡng từ 0,5 về τ\* để hội đồng thấy số vụ bắt được nhảy lên trong khi chi phí giảm.
 - [ ] **T-67** Ôn ba câu hỏi chắc chắn bị hỏi — *xong là khi:* trả lời được trôi chảy không cần nhìn tài liệu:
   1. Vì sao PR-AUC chứ không phải ROC-AUC?
   2. SMOTE hoạt động thế nào và vì sao nó phải nằm trong pipeline?
   3. Ngưỡng này được chọn ra sao, sẽ đổi thế nào nếu chi phí thay đổi?
 
+
+### Ghi chú khi viết báo cáo (2026-10-09)
+
+`reports/bao-cao.md` theo dàn ý docs/09 §5, 12 mục + tài liệu tham khảo + phụ lục, 22 hình. Phần 8 (ngưỡng
+và chi phí, ~14.500 ký tự) và phần 6 (so sánh chiến lược, ~10.200) là hai phần dài nhất — điều kiện của
+T-63. T-64: §11.1 nêu đủ ba hạn chế bắt buộc (PCA, hai ngày 9/2013, 492 mẫu dương với độ rộng khoảng tin
+cậy cụ thể). T-65: §1.2 và tài liệu tham khảo [1] (Kaggle mlg-ulb, Dal Pozzolo và cộng sự 2015, DbCL v1.0).
+
+Còn phải tự điền: họ tên, MSSV, giảng viên hướng dẫn ở đầu báo cáo. Ảnh giao diện `reports/figures/10_ui_*.png`
+chép từ `scripts/ui/shots/` (chụp 2026-10-02; các dòng trong ảnh đều có điểm > 99,9% nên vẫn đúng với luật
+chặn mới). Cần bản PDF thì xuất từ Markdown (VS Code: Markdown PDF, hoặc `pandoc bao-cao.md -o bao-cao.pdf`).
 ---
 
 ## Thứ tự cắt giảm khi thiếu thời gian

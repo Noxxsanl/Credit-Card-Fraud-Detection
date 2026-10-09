@@ -60,8 +60,9 @@ def db_healthy() -> bool:
 
 def measure(mode: str, timeout: float) -> dict[str, float | None]:
     compose("down", "-v") if mode == "cold" else compose("down")
-    health = f"http://localhost:{env_port('API_HOST_PORT', 8000)}/api/v1/health"
-    page = f"http://localhost:{env_port('WEB_HOST_PORT', 3000)}/"
+    # 127.0.0.1: trên Windows "localhost" thử ::1 trước và chờ ~2 giây mỗi lần — sai số đo khởi động
+    health = f"http://127.0.0.1:{env_port('API_HOST_PORT', 8000)}/api/v1/health"
+    page = f"http://127.0.0.1:{env_port('WEB_HOST_PORT', 3000)}/"
     marks: dict[str, float | None] = {"db": None, "web": None, "health": None}
 
     started = time.perf_counter()

@@ -29,6 +29,14 @@ backup/
 
 # Diem out-of-fold cua luoi 20 to hop (~30 MB), sinh lai tu notebook 04
 reports/*.npz
+
+# Nhat ky mot lan chay (scripts/run_grid.py | tee grid_run.log) va ket qua chay thu --smoke:
+# docs/lenh-chay §3.3, §4.3 ghi ro "khong ghi vao git"
+*.log
+reports/*_smoke.*
+
+# Goi hien vat nop kem bai (README buoc 3) — 19 MB, khong dua vao lich su git
+hien-vat.tgz
 .claude
 # Kiem giao dien bang Chrome (scripts/ui)
 scripts/ui/node_modules/

@@ -35,7 +35,7 @@ def list_transactions(
 ):
     tau, _ = runtime_settings.current_threshold(session, loaded)
     return transactions.list_transactions(
-        session, tau, min_score=min_score, max_score=max_score, band=band, reviewed=reviewed,
+        session, tau, loaded.block_threshold, min_score=min_score, max_score=max_score, band=band, reviewed=reviewed,
         review_status=review_status, batch_id=batch_id, source=source, sort=sort, page=page, page_size=page_size,
     )
 

@@ -1,0 +1,13 @@
+tập,so sánh,hàm chi phí,thêm TP,thêm FP,hiệu chi phí,ci_low,ci_high,KTC chứa 0,tỷ lệ lần A rẻ hơn
+out-of-fold,"τ* — chi phí cố định  so với  0,5 (mặc định)","cố định 122,21",10.0,103.0,-707.0999999999999,-1513.0147499999996,-23.839999999999975,False,0.978
+out-of-fold,"τ* — chi phí cố định  so với  0,5 (mặc định)",theo số tiền,10.0,103.0,209.44,-320.00575,538.5155,True,0.221
+out-of-fold,"τ*ₐ — chi phí theo số tiền  so với  0,5 (mặc định)","cố định 122,21",13.0,316.0,-8.729999999999905,-844.5749999999998,846.9202499999999,True,0.478
+out-of-fold,"τ*ₐ — chi phí theo số tiền  so với  0,5 (mặc định)",theo số tiền,13.0,316.0,-32.15999999999997,-2110.645,1485.63475,True,0.476
+out-of-fold,τ*ₐ — chi phí theo số tiền  so với  τ* — chi phí cố định,"cố định 122,21",3.0,213.0,698.3700000000001,221.55975,1080.0,False,0.002
+out-of-fold,τ*ₐ — chi phí theo số tiền  so với  τ* — chi phí cố định,theo số tiền,3.0,213.0,-241.60000000000002,-2309.74075,1113.47925,True,0.565
+kiểm thử,"τ* — chi phí cố định  so với  0,5 (mặc định)","cố định 122,21",3.0,34.0,-196.63,-675.595,160.0,True,0.826
+kiểm thử,"τ* — chi phí cố định  so với  0,5 (mặc định)",theo số tiền,3.0,34.0,160.23000000000002,102.97975,216.82549999999992,False,0.0
+kiểm thử,"τ*ₐ — chi phí theo số tiền  so với  0,5 (mặc định)","cố định 122,21",4.0,85.0,-63.83999999999999,-602.68,332.79,True,0.58
+kiểm thử,"τ*ₐ — chi phí theo số tiền  so với  0,5 (mặc định)",theo số tiền,4.0,85.0,-36.039999999999964,-983.0699999999999,486.254,True,0.561
+kiểm thử,τ*ₐ — chi phí theo số tiền  so với  τ* — chi phí cố định,"cố định 122,21",1.0,51.0,132.79000000000002,-156.63,315.0,True,0.135
+kiểm thử,τ*ₐ — chi phí theo số tiền  so với  τ* — chi phí cố định,theo số tiền,1.0,51.0,-196.26999999999998,-1143.81,315.0,True,0.628

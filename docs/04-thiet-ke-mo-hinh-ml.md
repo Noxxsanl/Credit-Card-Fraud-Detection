@@ -153,10 +153,14 @@ và sai hẳn với Decision Tree: `class_weight='balanced'` làm PR-AUC của c
 xử lý gì) xuống 0,3586.
 
 **S5 = S4.** SMOTE + Tomek cho mảng điểm out-of-fold **giống hệt SMOTE tới từng phần tử** ở cả
-bốn mô hình; bước Tomek xoá đúng 0 cặp và tốn 1.089 giây, tức 40% thời gian lưới. Ở tỷ lệ
-1:600, sau khi SMOTE nâng lớp dương lên 1:10 thì vùng biên vẫn quá thưa để hai điểm khác lớp
-trở thành láng giềng gần nhất của nhau. Giữ S5 trong bảng báo cáo như một kết quả âm tính, nhưng
-bỏ khỏi các lần chạy lại.
+bốn mô hình; bước Tomek xoá đúng 0 cặp và tốn 1.089 giây, tức 40% thời gian lưới.
+Lý do — kiểm lại trên fold 1 của lưới (2026-10-09): dữ liệu gốc **có** cặp Tomek. Trước SMOTE,
+`TomekLinks` tìm được 21 cặp (xoá 42 dòng, trong đó 21 vụ gian lận); sau SMOTE còn 0. Chính SMOTE
+xoá chúng: mỗi vụ gian lận thật được dùng làm gốc để sinh khoảng 59 điểm tổng hợp trên các đoạn nối
+nó với láng giềng cùng lớp, nên láng giềng gần nhất của nó trở thành một điểm gian lận tổng hợp —
+không còn cặp khác lớp nào là láng giềng gần nhất **của nhau**. `SMOTETomek` chạy SMOTE trước, Tomek
+sau, nên ở tỷ lệ này bước Tomek luôn vô tác dụng; muốn Tomek có tác dụng phải dọn **trước** khi sinh mẫu.
+Giữ S5 trong bảng báo cáo như một kết quả âm tính, nhưng bỏ khỏi các lần chạy lại.
 
 **Độ mịn điểm rủi ro — tiêu chí không có trong §3.4 nhưng quyết định lựa chọn.** Số điểm rủi ro
 khác nhau trên 226.980 mẫu: XGBoost ~222.000, Logistic Regression ~226.300, **Random Forest chỉ
@@ -318,7 +322,7 @@ cảnh báo nằm dưới mức đó, bất kể chi phí lý thuyết nói gì.
 | τ cho 200 cảnh báo/ngày | | | | | | | |
 
 Kèm một đoạn diễn giải bằng lời: "Hạ ngưỡng từ 0,5 xuống 0,047 giúp bắt thêm N
-giao dịch gian lận, đổi lại M cảnh báo giả mỗi ngày, tiết kiệm ròng X USD."
+giao dịch gian lận, đổi lại M cảnh báo giả mỗi ngày, tiết kiệm ròng X EUR."
 
 ### 6.5 Phân tích độ nhạy
 
@@ -340,15 +344,27 @@ Bảng §6.4 trên tập kiểm thử (56.746 giao dịch, 95 gian lận), mọi
 
 | Ngưỡng | Cảnh báo/ngày | TP | FP | FN | Precision | Recall | Chi phí kỳ vọng |
 |---|---|---|---|---|---|---|---|
-| 0,5 (mặc định) | 195 | 74 | 4 | 21 | 0,949 | 0,779 | 2.586 USD |
-| **τ\* = 0,0232** | **287** | **77** | **38** | **18** | **0,670** | **0,811** | **2.390 USD** |
-| τ = 0,00054 cho recall ≥ 90% | 2.007 | 83 | 720 | 12 | 0,103 | 0,874 | 5.067 USD |
-| τ = 0,9625 cho 200 cảnh báo/ngày | 175 | 69 | 1 | 26 | 0,986 | 0,726 | 3.182 USD |
+| 0,5 (mặc định) | 195 | 74 | 4 | 21 | 0,949 | 0,779 | 2.586 EUR |
+| **τ\* = 0,0232** | **287** | **77** | **38** | **18** | **0,670** | **0,811** | **2.390 EUR** |
+| τ = 0,00054 cho recall ≥ 90% | 2.007 | 83 | 720 | 12 | 0,103 | 0,874 | 5.067 EUR |
+| τ = 0,9625 cho 200 cảnh báo/ngày | 175 | 69 | 1 | 26 | 0,986 | 0,726 | 3.182 EUR |
 
 "Hạ ngưỡng từ 0,5 xuống 0,0232 bắt thêm **3** vụ gian lận, đổi lại **34** cảnh báo giả, tiết
-kiệm ròng **197 USD** trên tập kiểm thử (khoảng 490 USD/ngày trên toàn luồng)." Bootstrap theo
+kiệm ròng **197 EUR** trên tập kiểm thử (khoảng 490 EUR/ngày trên toàn luồng)." Bootstrap theo
 cặp cho hiệu chi phí trên tập test là −197 [−676, +160], **chứa 0**. Trên out-of-fold (378 gian
 lận) thì −707 [−1.513, −24], không chứa 0. Kết luận "τ\* rẻ hơn 0,5" dựa trên out-of-fold.
+
+**Kết luận đó chỉ đứng dưới giả định "mọi vụ lọt tốn 122,21 EUR"** (rà soát 2026-10-09, notebook 06
+§6.1). Tính chi phí bỏ lọt bằng **số tiền của chính vụ bị lọt**: 3 vụ "bắt thêm" trên tập kiểm thử chỉ
+là 2,22 / 3,76 / 3,79 EUR, đổi lấy 34 × 5 = 170 EUR thẩm định, nên τ\* **đắt hơn** 0,5:
++160 [+103, +217] EUR trên tập kiểm thử (không chứa 0), +209 [−320, +539] trên out-of-fold. Chọn
+theo số tiền thì τ\*ₐ = 0,0066, nhưng nó không hơn 0,5 hay τ\* một cách có ý nghĩa — đường chi phí theo
+số tiền phẳng và lởm chởm trên cả dải 0,007 … 0,7. Con số 122,21 cũng là trung bình trên dữ liệu thô
+(gồm tập kiểm thử); trung bình chỉ trên tập huấn luyện là 115,94, cho cùng τ\* = 0,023173.
+
+Báo cáo vì vậy phải nói: ngưỡng tối ưu phụ thuộc giả định chi phí tới mức đổi **dấu** của khoản tiết
+kiệm; điều vững là đáy chi phí phẳng trên một dải rộng, trong đó chọn theo năng lực thẩm định. τ mặc
+định của hệ thống giữ nguyên 0,02317 — đổi hay không là quyết định nghiệp vụ.
 
 **§6.1 dự báo sai về độ lớn.** Ngưỡng 0,5 không cho recall "thấp bất thường" (0,779 so với 0,811
 ở τ\*), vì `scale_pos_weight = 599,5` đã đẩy điểm lớp dương lên sát 1. Dự báo ở §6.1 đúng với mô

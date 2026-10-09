@@ -35,7 +35,14 @@ REPLAY_WRITE_BATCH = 100
 MAX_REPORTED_REJECTIONS = 100
 MAX_UPLOAD_RESULTS = 200
 
-DEFAULT_DATABASE_URL = "postgresql+psycopg://fraud:fraud@localhost:5432/fraud"
+#: 05 §2 — chỉ "đề xuất chặn" khi trên out-of-fold, mọi ngưỡng từ mức đó trở lên đều có ít nhất
+#: 95% cảnh báo là gian lận thật. Với mô hình hiện tại: ngưỡng ≈ 0,9735; trên tập kiểm thử chặn
+#: 70 giao dịch, 69 là gian lận (luật cũ "≥ 3τ" chặn 96, trong đó 19 khách hợp lệ).
+BLOCK_MIN_PRECISION = 0.95
+
+# 127.0.0.1 chứ không phải localhost: trên Windows "localhost" thử ::1 trước, và cổng chỉ mở trên
+# 127.0.0.1 (docker-compose.yml) thì mỗi kết nối mới chờ thêm 2–5 giây trước khi quay về IPv4
+DEFAULT_DATABASE_URL = "postgresql+psycopg://fraud:fraud@127.0.0.1:5432/fraud"
 
 
 @dataclass(frozen=True)

@@ -279,7 +279,7 @@ từ CDN: buổi bảo vệ không được phụ thuộc mạng (NFR-08). Lện
 |---|---|---|
 | Chung | Điều hướng bằng địa chỉ `#/queue`, `#/threshold`, `#/performance`, `#/replay` | Tải lại trang giữ nguyên màn hình; nút Back của trình duyệt dùng được |
 | Chung | Thanh trên hiện cả trạng thái API/CSDL (thăm `/health` mỗi 15 giây), cạnh ngưỡng | Mất CSDL hay thiếu hiện vật thì hiện dải thông báo kèm đúng lệnh cần chạy. Thanh trượt ngưỡng và UI-04 không cần CSDL nên vẫn dùng được |
-| UI-01 | Màu theo điểm tuyệt đối như §3, **thêm** cột "Đề xuất" (`decision` của API: chặn khi ≥ 3τ, cần thẩm định khi τ…3τ) | Mức 60%/90% không nói gì về hành động; dải tương đối với τ mới là thứ quyết định chặn hay xem xét |
+| UI-01 | Màu theo điểm tuyệt đối như §3, **thêm** cột "Đề xuất" (`decision` của API: đề xuất chặn khi ≥ `max(τ, τ_chặn)` với τ_chặn chọn theo precision ≥ 95% trên out-of-fold, cần thẩm định khi từ τ tới dưới mức đó — 05 §2) | Mức 60%/90% không nói gì về hành động; dải tương đối với τ mới là thứ quyết định chặn hay xem xét |
 | UI-01 | Bộ lọc mặc định "Tất cả", không phải "Chờ xử lý" | Dòng vừa thẩm định đứng tại chỗ và đổi trạng thái ngay, thay vì biến mất khỏi danh sách |
 | UI-01 | Dòng tóm tắt nói rõ "trên N giao dịch kiểm thử" | Số cảnh báo của UI-D1 (tập kiểm thử) khác số dòng trong hàng đợi (dữ liệu người dùng nạp); để chung một câu là gây nhầm |
 | UI-01 | Trạng thái rỗng tách hai trường hợp: bảng `transactions` trống (ba cách nạp) và bộ lọc không khớp | Hỏi thêm `GET /transactions?min_score=0&page_size=1` khi danh sách rỗng |

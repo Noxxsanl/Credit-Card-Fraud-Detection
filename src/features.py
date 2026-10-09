@@ -65,6 +65,11 @@ def hour_of_day(time_seconds) -> np.ndarray:
     ``Time`` là số giây kể từ giao dịch đầu tiên của bộ dữ liệu, nên phép chia
     lấy dư theo 24 giờ cho ra giờ trong ngày — thông tin duy nhất lặp lại được
     khi triển khai (DS-03).
+
+    **Giả định:** giao dịch đầu tiên (``Time = 0``) xảy ra lúc 00:00. Bộ dữ liệu không
+    ghi giờ bắt đầu. Bằng chứng gián tiếp: sáu giờ vắng nhất là 1h–6h (mỗi giờ
+    0,8–1,5% lượng giao dịch, ban ngày 5–6%), khớp với ban đêm. Giả định sai thì
+    ``hour_sin``/``hour_cos`` lệch pha nhưng vẫn lặp theo chu kỳ 24 giờ (02 §3, DS-03).
     """
     seconds = np.asarray(time_seconds, dtype="float64")
     return np.floor(seconds / SECONDS_PER_HOUR) % HOURS_PER_DAY
@@ -133,11 +138,12 @@ def build_features(df: pd.DataFrame, *, validate: bool = False) -> pd.DataFrame:
     hour = hour_of_day(df[TIME_COLUMN].to_numpy())
     hour_sin, hour_cos = encode_hour(hour)
 
-    features = df[[*V_COLUMNS, AMOUNT_COLUMN]].astype("float64").copy()
-    features["hour_sin"] = hour_sin
-    features["hour_cos"] = hour_cos
-
-    return features[FEATURE_ORDER]
+    # Dựng cả ma trận bằng numpy rồi bọc DataFrame một lần: cùng giá trị từng bit với cách
+    # chèn từng cột, nhưng nhanh gấp vài lần cho một giao dịch lẻ (NFR-01, /score)
+    values = np.column_stack(
+        [df[[*V_COLUMNS, AMOUNT_COLUMN]].to_numpy(dtype="float64"), hour_sin, hour_cos]
+    )
+    return pd.DataFrame(values, columns=FEATURE_ORDER, index=df.index)
 
 
 def split_features_target(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:

@@ -15,6 +15,7 @@ from src.threshold import (
     confusion_counts,
     cost_curve,
     metrics_at_threshold,
+    missed_cost,
     pick_threshold,
     sensitivity_analysis,
     sweep,
@@ -334,6 +335,75 @@ def test_constrained_criterion_requires_value(scores):
 
     with pytest.raises(ValueError, match="cần tham số"):
         pick_threshold(y_true, y_scores, "min_recall")
+    with pytest.raises(ValueError, match="cần tham số"):
+        pick_threshold(y_true, y_scores, "min_precision")
+
+
+# --------------------------------------------------------------------------
+# Chi phí bỏ lọt theo từng giao dịch (fn_costs) và tiêu chí min_precision
+# --------------------------------------------------------------------------
+
+def test_missed_cost_by_hand():
+    y_true = [1, 1, 1, 0, 0]
+    y_scores = [0.1, 0.5, 0.9, 0.2, 0.95]
+    amounts = [10.0, 200.0, 3000.0, 7.0, 8.0]
+    # τ = 0,5: bỏ lọt mỗi vụ 0,1 (10). τ = 0,95: bỏ lọt cả ba (3.210). Dòng hợp lệ không tính
+    assert list(missed_cost(y_true, y_scores, amounts, [0.0, 0.5, 0.95])) == [0.0, 10.0, 3210.0]
+
+
+def test_metrics_with_per_transaction_costs_by_hand():
+    y_true = [1, 1, 1, 0, 0]
+    y_scores = [0.1, 0.5, 0.9, 0.2, 0.95]
+    met = metrics_at_threshold(y_true, y_scores, 0.5, cost_fp=5.0, fn_costs=[10.0, 200.0, 3000.0, 7.0, 8.0])
+    assert (met.tp, met.fp, met.fn) == (2, 1, 1)
+    assert met.expected_cost == 10.0 + 1 * 5.0
+
+
+def test_constant_fn_costs_reproduce_the_scalar_cost(scores):
+    y_true, y_scores = scores
+    constant = np.full(y_scores.size, 122.21)
+    scalar = cost_curve(y_true, y_scores, cost_fn=122.21, cost_fp=5.0)
+    per_tx = cost_curve(y_true, y_scores, cost_fp=5.0, fn_costs=constant)
+    assert np.allclose(scalar["expected_cost"], per_tx["expected_cost"], rtol=0, atol=1e-6)
+    assert pick_threshold(y_true, y_scores, cost_fn=122.21, cost_fp=5.0) == pick_threshold(
+        y_true, y_scores, cost_fp=5.0, fn_costs=constant)
+
+
+def test_cheap_misses_push_the_threshold_up(scores):
+    """Gian lận điểm thấp mà số tiền nhỏ thì không đáng đổi lấy nhiều cảnh báo giả để bắt."""
+    y_true, y_scores = scores
+    flat = np.full(y_scores.size, 100.0)
+    cheap_low = np.where(y_scores < np.quantile(y_scores[y_true == 1], 0.5), 0.5, 100.0)
+    exact = np.unique(y_scores)
+    assert pick_threshold(y_true, y_scores, cost_fp=5.0, fn_costs=cheap_low, thresholds=exact) >= pick_threshold(
+        y_true, y_scores, cost_fp=5.0, fn_costs=flat, thresholds=exact)
+
+
+def test_fn_costs_must_match_scores_length(scores):
+    y_true, y_scores = scores
+    with pytest.raises(ValueError, match="fn_costs"):
+        cost_curve(y_true, y_scores, fn_costs=[1.0, 2.0])
+
+
+def test_min_precision_holds_for_every_higher_threshold(scores):
+    y_true, y_scores = scores
+    exact = np.unique(y_scores)
+    tau = pick_threshold(y_true, y_scores, "min_precision", value=0.9, thresholds=exact)
+    table = cost_curve(y_true, y_scores, thresholds=exact)
+    above = table[(table["threshold"] >= tau) & (table["alerts"] > 0)]
+    assert len(above) and (above["precision"] >= 0.9).all()
+    # và là ngưỡng nhỏ nhất như vậy: ngay dưới nó có một ngưỡng vi phạm
+    below = table[table["threshold"] < tau]
+    assert below.empty or below.iloc[-1]["precision"] < 0.9
+
+
+def test_min_precision_skips_an_early_dip_above_target():
+    """Precision không đơn điệu: chạm 0,9 ở ngưỡng thấp rồi tụt lại thì chưa được nhận."""
+    y_true = [1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0]
+    y_scores = [0.99, 0.98, 0.9, 0.8, 0.7, 0.6, 0.5, 0.45, 0.4, 0.35, 0.3, 0.2, 0.1]
+    tau = pick_threshold(y_true, y_scores, "min_precision", value=0.9, thresholds=np.unique(y_scores))
+    # Ở 0,3 precision = 10/11 ≥ 0,9, nhưng ở 0,98 precision = 1/2: phần đuôi vi phạm → không nhận 0,3
+    assert tau == 0.99
 
 
 # TC-12 (đối chiếu máy khách – máy chủ) nằm ở tests/test_threshold_parity.py: nó chạy

@@ -1,0 +1,15 @@
+# Xuống dòng thống nhất LF trong repo — trước đây 37 tệp CRLF lẫn với 142 tệp LF, tuỳ máy và
+# công cụ đã ghi tệp. Git tự đổi CRLF → LF khi add; trên Windows tệp lấy ra vẫn là LF, mọi trình
+# soạn thảo hiện đại đọc được. (api/entrypoint.py viết bằng Python cũng vì lý do này.)
+* text=auto eol=lf
+
+# Nhị phân — không bao giờ đổi xuống dòng, không diff theo dòng
+*.png binary
+*.joblib binary
+*.npz binary
+*.parquet binary
+*.dump binary
+*.tgz binary
+
+# Thư viện đã rút gọn: một dòng dài, diff vô ích
+*.min.js -diff

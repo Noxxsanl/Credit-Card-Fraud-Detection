@@ -1,10 +1,14 @@
 # Thư viện của container api (api/Dockerfile) — chỉ những gì API cần lúc chạy.
 #
 # Ghim ĐÚNG phiên bản lúc xuất hiện vật (metrics.json → environment.packages, notebook 08).
-# model.joblib và explainer.joblib là pickle: lệch phiên bản scikit-learn, imbalanced-learn,
-# xgboost hay shap có thể nạp được mà vẫn cho điểm khác. api/loader.py chấm lại 1/50 tập
-# kiểm thử lúc khởi động để bắt đúng trường hợp đó. Huấn luyện lại bằng bản khác thì sửa
-# các dòng dưới cho khớp, rồi `docker compose build api`.
+# model.joblib là pickle: lệch phiên bản scikit-learn, imbalanced-learn hay xgboost có thể nạp
+# được mà vẫn cho điểm khác. api/loader.py chấm lại 1/50 tập kiểm thử lúc khởi động để bắt đúng
+# trường hợp đó.
+#
+# Không có shap: API tính SHAP bằng pred_contribs của XGBoost (api/serving.py), trùng từng bit
+# với explainer.joblib. Bỏ shap là bỏ luôn numba + llvmlite — khoảng 210 MB của ảnh.
+#
+# Huấn luyện lại bằng bản khác thì sửa các dòng dưới cho khớp, rồi `docker compose build api`.
 #
 # xgboost nằm riêng trong requirements-nodeps.txt (xem lý do ở đó).
 # requirements.txt ở gốc repo là môi trường đầy đủ cho notebook; tệp này là tập con của nó.
@@ -17,7 +21,6 @@ scipy==1.18.1
 scikit-learn==1.9.1
 imbalanced-learn==0.14.2
 joblib==1.6.0
-shap==0.52.0
 
 # API và cơ sở dữ liệu
 fastapi==0.141.1

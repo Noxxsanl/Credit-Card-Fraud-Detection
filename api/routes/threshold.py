@@ -7,7 +7,7 @@ import math
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from ..config import API_PREFIX
+from ..config import API_PREFIX, BLOCK_MIN_PRECISION
 from ..deps import get_artifacts, get_session
 from ..errors import ApiError
 from ..loader import Artifacts
@@ -29,6 +29,7 @@ def _state(session: Session, loaded: Artifacts) -> dict:
         "current": current, "source": source, "default": loaded.default_threshold,
         "cost_fn": cost_fn, "cost_fp": cost_fp,
         "alternatives": loaded.threshold["alternatives"], "model_version": loaded.model_version,
+        "block_threshold": loaded.block_threshold, "block_min_precision": BLOCK_MIN_PRECISION,
     }
 
 

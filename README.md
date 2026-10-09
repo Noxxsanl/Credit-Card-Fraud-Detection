@@ -1,18 +1,19 @@
 # Fraud Detection — Phát hiện gian lận thẻ tín dụng
 
-Đề tài  — Phát hiện gian lận thẻ tín dụng (Credit Card Fraud Detection)
-Mô tả bài toán. Phân loại nhị phân cực kỳ mất cân bằng: phát hiện giao dịch gian lận. Trọng tâm là kỹ thuật xử lý dữ liệu mất cân bằng và lựa chọn metric phù hợp.
-Dữ liệu (Kaggle). Dataset "Credit Card Fraud Detection" của owner Machine Learning Group - ULB (mlg-ulb) (kaggle.com/datasets/mlg-ulb/creditcardfraud), file creditcard.csv. Theo mô tả chính thức của mlg-ulb: "This dataset presents transactions that occurred in two days, where we have 492 frauds out of 284,807 transactions. The dataset is highly unbalanced, the positive class (frauds) account for 0.172% of all transactions." [Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud/activity)[Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud/metadata) → 284.807 giao dịch, 492 gian lận (0,172%), 31 cột: [uspto](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/11416748) Time, V1–V28 (đã biến đổi PCA để ẩn danh), Amount, và Class (0/1). [arxiv](https://arxiv.org/pdf/2401.04139) Giao dịch của chủ thẻ châu Âu, tháng 9/2013. [Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud/activity)[Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud/metadata) License Database Contents License (DbCL) v1.0.
-Công nghệ sử dụng. Python, pandas, NumPy; matplotlib, seaborn; scikit-learn (Logistic Regression, Random Forest, đánh giá); imbalanced-learn (SMOTE, undersampling); XGBoost/LightGBM; tùy chọn PyTorch (autoencoder cho anomaly detection); SHAP.
-Ánh xạ với chương trình học. Ch.1; Ch.2 (PCA — chính các đặc trưng V1–V28 là thành phần chính); Ch.3 EDA (phân bố Amount/Time, tương quan); Ch.4 (xác suất, dữ liệu mất cân bằng cực đoan, ý nghĩa Precision/Recall/PR-AUC); Ch.5 (Logistic Regression, cây quyết định); Ch.6 (ensemble, SMOTE, tuning ngưỡng, cost-sensitive learning); Ch.8 (tùy chọn: autoencoder). Ch.7 không vận dụng.
-Pipeline & mô hình. (1) EDA + scaling Amount/Time; (2) baseline: Logistic Regression; (3) xử lý mất cân bằng (SMOTE/undersampling/class_weight); (4) nâng cao: Random Forest/XGBoost; (5) tối ưu ngưỡng theo PR curve; (6) tùy chọn autoencoder; (7) giải thích SHAP.
-Metrics. PR-AUC (quan trọng nhất do mất cân bằng), Recall, Precision, F1, ROC-AUC, confusion matrix. KHÔNG dùng accuracy làm metric chính (baseline "luôn đoán không gian lận" đã đạt 99,8% accuracy).
-Deliverable. Notebook phân tích, so sánh chiến lược xử lý mất cân bằng, mô hình đã lưu, báo cáo về trade-off Precision–Recall.
-Phạm vi & độ khó. Độ khó: Dễ–Trung bình (dữ liệu đã sạch, PCA sẵn), nhưng thách thức nằm ở xử lý mất cân bằng và chọn metric.
+Phân loại nhị phân cực kỳ mất cân bằng: phát hiện giao dịch thẻ tín dụng gian lận. Trọng tâm của đề
+tài là kỹ thuật xử lý dữ liệu mất cân bằng, lựa chọn metric phù hợp và chọn ngưỡng theo chi phí.
 
-Dự án phân tích và xây dựng mô hình phát hiện giao dịch thẻ tín dụng gian lận
-trên bộ dữ liệu [Credit Card Fraud Detection (Kaggle)](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud)
-— 284.807 giao dịch, chỉ 492 gian lận (~0,17%), tức mất cân bằng cực nặng.
+## Đề tài
+
+| | |
+|---|---|
+| **Dữ liệu** | [Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) — Machine Learning Group, ULB (Kaggle `mlg-ulb`), tệp `creditcard.csv`. Giao dịch của chủ thẻ châu Âu trong hai ngày của tháng 9/2013: **284.807 giao dịch, 492 gian lận (0,172%)**. 31 cột: `Time`, `V1`–`V28` (thành phần chính sau PCA, để ẩn danh), `Amount`, `Class` (0/1). Giấy phép Database Contents License (DbCL) v1.0 |
+| **Công nghệ** | Python, pandas, NumPy; matplotlib, seaborn; scikit-learn; imbalanced-learn (SMOTE, undersampling); XGBoost; SHAP. Autoencoder (tùy chọn) dùng `MLPRegressor` vì môi trường không có PyTorch |
+| **Pipeline** | (1) EDA + chuẩn hoá `Amount`, mã hoá giờ từ `Time`; (2) mô hình cơ sở Logistic Regression; (3) xử lý mất cân bằng: SMOTE, undersampling, `class_weight`; (4) Random Forest, XGBoost; (5) chọn ngưỡng theo đường PR và chi phí; (6) autoencoder (tùy chọn); (7) giải thích bằng SHAP |
+| **Metric** | PR-AUC là chính; Recall, Precision, F1, ROC-AUC, ma trận nhầm lẫn. **Không** dùng accuracy: mô hình "luôn đoán hợp lệ" đã đạt 99,83% |
+| **Sản phẩm** | Notebook phân tích, so sánh chiến lược mất cân bằng, mô hình đã lưu, báo cáo về đánh đổi Precision–Recall |
+| **Chương trình học** | Ch.1; Ch.2 (PCA — chính `V1`–`V28` là thành phần chính); Ch.3 EDA (phân bố `Amount`/`Time`, tương quan); Ch.4 (xác suất, mất cân bằng cực đoan, ý nghĩa Precision/Recall/PR-AUC); Ch.5 (Logistic Regression, cây quyết định); Ch.6 (ensemble, SMOTE, chọn ngưỡng, học theo chi phí); Ch.8 (tùy chọn: autoencoder). Ch.7 không vận dụng |
+| **Độ khó** | Dễ–Trung bình: dữ liệu đã sạch, PCA sẵn; thách thức nằm ở xử lý mất cân bằng và chọn metric |
 
 ## Cấu trúc
 
@@ -56,14 +57,18 @@ cd fraud-detection
 
 ### Bước 3 — Đặt hiện vật mô hình vào chỗ
 
-API không huấn luyện; nó nạp 7 tệp do notebook 08 xuất ra. Hai tệp `.json` đã có trong git, năm tệp còn
-lại không (dung lượng, và chúng sinh lại được):
+API không huấn luyện; nó nạp 6 tệp do notebook 08 xuất ra. Hai tệp `.json` đã có trong git, bốn tệp còn
+lại không (dung lượng, và chúng sinh lại được). `explainer.joblib` chỉ notebook và kiểm thử cần — API
+tính SHAP bằng chính XGBoost:
 
 ```
-models/model.joblib   models/explainer.joblib   models/oof_scores.npz
+models/model.joblib   models/oof_scores.npz   models/explainer.joblib (không bắt buộc)
 models/metrics.json   models/threshold.json            ← có sẵn trong git
 data/test_set.parquet data/sample_pool.json
 ```
+
+API tự kiểm hiện vật lúc khởi động — cùng một lần xuất, đúng cấu trúc, chấm lại tập kiểm thử ra đúng
+điểm đã lưu. Sai thì `api` không lên `(healthy)` và `docker compose logs api` nói rõ lý do.
 
 **Cách A — có gói hiện vật** (`hien-vat.tgz`, nộp kèm bài hoặc chép từ máy đã chạy notebook). Đặt tệp ở
 gốc repo rồi giải nén — `tar` có sẵn trên Windows 10 trở lên, macOS và Linux:
@@ -78,7 +83,9 @@ Tạo gói này trên máy đã có hiện vật:
 tar -czf hien-vat.tgz models/model.joblib models/explainer.joblib models/oof_scores.npz models/metrics.json models/threshold.json data/test_set.parquet data/sample_pool.json
 ```
 
-**Cách B — tự tạo hiện vật** (cần Python 3.12, khoảng 20 phút cộng thời gian tải 150 MB dữ liệu):
+**Cách B — tự tạo hiện vật** (cần Python 3.12, khoảng 20 phút cộng thời gian tải 150 MB dữ liệu).
+`requirements.txt` ghim **đúng** phiên bản của lần xuất gốc — đừng nâng cấp gói, notebook 08 sẽ dừng vì
+số lệch:
 
 ```bash
 python -m venv .venv
@@ -112,6 +119,9 @@ docker compose ps
 |---|---|
 | http://localhost:3000 | Giao diện: hàng đợi, ngưỡng, hiệu năng mô hình, phát lại |
 | http://localhost:8000/docs | Tài liệu API, thử từng endpoint |
+
+Các cổng chỉ mở trên `127.0.0.1` (API không có đăng nhập). Cần mở giao diện từ máy khác, ví dụ máy chiếu
+của phòng bảo vệ: đặt `BIND_ADDRESS=0.0.0.0` trong `.env` rồi `docker compose up -d` (xem `.env.example`).
 
 Hàng đợi lúc đầu rỗng; giao diện hướng dẫn ba cách nạp dữ liệu (tải CSV, thư viện mẫu, phát lại ngày 2).
 Có Python thì nạp sẵn một bộ dữ liệu demo bằng `python scripts/demo_db.py seed`
@@ -174,7 +184,7 @@ python scripts/run_grid.py --status   # xem tiến độ
 | `03_baseline.ipynb` | Mô hình rỗng + Logistic Regression + Decision Tree, bảng mốc cho G-2 → `data/test_set.parquet` | ✅ |
 | `04_imbalance_strategies.ipynb` | Lưới 5 chiến lược × 4 mô hình → `reports/grid_results.csv` | ✅ |
 | `05_advanced_models.ipynb` | Tinh chỉnh XGBoost, đánh giá trên tập test kèm khoảng tin cậy, chia theo thời gian, rà soát rò rỉ → `reports/final_test_metrics.csv` | ✅ |
-| `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ trên out-of-fold, độ nhạy theo tỷ lệ chi phí → `reports/threshold_comparison.csv` | ✅ |
+| `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ trên out-of-fold, độ nhạy theo tỷ lệ chi phí → `reports/threshold_comparison.csv`. Mục 6: chi phí theo số tiền, ngưỡng đề xuất chặn, độ tin cậy của điểm | ✅ |
 | `06b_autoencoder.ipynb` | (Tùy chọn) autoencoder chỉ học lớp hợp lệ, so với mô hình có giám sát | ✅ |
 | `07_explainability.ipynb` | SHAP toàn cục, đối chiếu xếp hạng thống kê, phân tích lỗi → `reports/shap_ranking.csv` | ✅ |
 | `08_export_artifacts.ipynb` | Xuất hiện vật cho API → `models/*`, `data/sample_pool.json` | ✅ |
@@ -186,13 +196,14 @@ làm **phương án B** — API FastAPI + PostgreSQL và giao diện web riêng 
 
 | Tiêu chí của mốc | Hiện trạng |
 |---|---|
-| Hiện vật đã đủ | Đủ: `model.joblib`, `explainer.joblib`, `metrics.json`, `threshold.json`, `oof_scores.npz`, `sample_pool.json` — kiểm bằng `tests/test_artifacts.py` |
+| Hiện vật đã đủ | Đủ: `model.joblib`, `explainer.joblib`, `metrics.json`, `threshold.json`, `oof_scores.npz`, `sample_pool.json` — kiểm bằng `tests/test_artifacts.py` (từ 2026-10-09 API không cần `explainer.joblib` nữa) |
 | Không còn nợ việc ở phần mô hình | Giai đoạn 0–6 xong 38/38 việc, gồm cả việc tùy chọn T-34; AC-M1…AC-M8 đạt |
 | Tái lập | T-38 đạt: chạy lại 01 → 08 trong kernel sạch, PR-AUC lệch 0 |
 
 Lưới an toàn vẫn giữ: nếu giai đoạn 7–8 trễ tới mức đe doạ ngày báo cáo (rủi ro R-03, R-08), quay về
-**phương án A** — Streamlit trong `app.py`, rút gọn giao diện và dồn thời gian cho báo cáo. Khi đó
-`app.py` phải đổi sang nạp `models/model.joblib` (hiện vẫn trỏ tới `best_model.pkl` cũ).
+**phương án A** — Streamlit trong `app.py`, rút gọn giao diện và dồn thời gian cho báo cáo. `app.py` đã
+nạp đúng `models/model.joblib` và τ\* của `threshold.json`, nên dùng được ngay làm phương án dự phòng
+khi Docker không chạy được trong buổi bảo vệ.
 
 ## Chạy khi phát triển (không đóng gói)
 
@@ -221,6 +232,10 @@ trong `web/vendor/`), không cần Node.js hay `npm install`. Chi tiết ở
 ```bash
 streamlit run app.py
 ```
+
+Chỉ cần môi trường Python và ba tệp `models/model.joblib`, `models/threshold.json`,
+`data/sample_pool.json` — không cần Docker, PostgreSQL hay `creditcard.csv`. Có thư viện mẫu theo bốn
+nhóm (gian lận dễ/khó, hợp lệ dễ/khó) và tab tải CSV; đặc trưng sinh bằng `build_features` như API.
 
 ## Công việc
 

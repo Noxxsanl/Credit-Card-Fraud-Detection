@@ -29,6 +29,9 @@ export interface ThresholdState {
   cost_fp: number;
   alternatives: Record<string, number>;
   model_version: string;
+  /** Từ điểm này trở lên (và ≥ current) API trả decision = "block" — chọn theo precision trên OOF */
+  block_threshold: number;
+  block_min_precision: number;
 }
 
 export interface ThresholdMetricsOut {

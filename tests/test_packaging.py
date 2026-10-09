@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy.exc import OperationalError
 
 from api import entrypoint
+from api.loader import SERVING_PACKAGES
 from src.config import METRICS_PATH, PROJECT_ROOT
 
 API_REQUIREMENTS = ("api/requirements.txt", "api/requirements-nodeps.txt")
@@ -43,14 +44,40 @@ def test_api_requirements_are_exact_pins():
                 assert "==" in line, f"{path}: '{line}' phải ghim bằng == (tái lập, NFR-07)"
 
 
-def test_api_pins_match_exported_artifacts():
+def exported_packages() -> dict[str, str]:
     if not METRICS_PATH.exists():
         pytest.skip("chưa có models/metrics.json")
-    expected = json.loads(METRICS_PATH.read_text(encoding="utf-8"))["environment"]["packages"]
+    return json.loads(METRICS_PATH.read_text(encoding="utf-8"))["environment"]["packages"]
+
+
+def test_api_pins_match_exported_artifacts():
+    """Chỉ những gói API thật sự nạp (SERVING_PACKAGES) — shap có trong metrics.json nhưng ảnh không cài."""
+    expected = {name: v for name, v in exported_packages().items() if name in SERVING_PACKAGES}
+    assert set(expected) == set(SERVING_PACKAGES)
     pinned = pins(*API_REQUIREMENTS)
     mismatched = {name: (version, pinned.get(normalize(name)))
                   for name, version in expected.items() if pinned.get(normalize(name)) != version}
     assert not mismatched, f"api/requirements*.txt lệch phiên bản lúc xuất hiện vật (cần, đang ghim): {mismatched}"
+
+
+def test_api_image_does_not_install_shap():
+    """SHAP tính bằng pred_contribs của XGBoost (api/serving.py); shap kéo theo numba + llvmlite ~210 MB."""
+    assert "shap" not in pins(*API_REQUIREMENTS)
+
+
+def test_root_requirements_are_exact_pins():
+    """Cách B của README tạo lại hiện vật từ notebook: cài bản khác là notebook 08 dừng vì số lệch."""
+    for line in (PROJECT_ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
+        line = line.split("#")[0].strip()
+        if line:
+            assert "==" in line, f"requirements.txt: '{line}' phải ghim bằng == (tái lập, NFR-07)"
+
+
+def test_root_pins_match_exported_artifacts():
+    pinned = pins("requirements.txt")
+    mismatched = {name: (version, pinned.get(normalize(name)))
+                  for name, version in exported_packages().items() if pinned.get(normalize(name)) != version}
+    assert not mismatched, f"requirements.txt lệch phiên bản lúc xuất hiện vật (cần, đang ghim): {mismatched}"
 
 
 def test_xgboost_is_installed_without_dependencies():
@@ -138,6 +165,19 @@ def test_api_waits_for_healthy_database(compose):
 def test_database_healthcheck_uses_tcp(compose):
     # Qua socket Unix thì báo khỏe cả lúc máy chủ tạm của initdb đang chạy (docker-compose.yml)
     assert "-h 127.0.0.1" in " ".join(compose["services"]["db"]["healthcheck"]["test"])
+
+
+def test_ports_are_published_on_localhost_by_default(compose):
+    """API không có đăng nhập: mặc định không mở cổng nào ra mạng LAN (BIND_ADDRESS trong .env để mở)."""
+    for name, service in compose["services"].items():
+        for port in service.get("ports", []):
+            assert port.startswith("${BIND_ADDRESS:-127.0.0.1}:"), f"{name}: cổng '{port}' mở ra mọi địa chỉ"
+
+
+def test_database_password_is_not_hard_coded(compose):
+    db, api = compose["services"]["db"], compose["services"]["api"]
+    assert db["environment"]["POSTGRES_PASSWORD"].startswith("${POSTGRES_PASSWORD")
+    assert ":${POSTGRES_PASSWORD" in api["environment"]["DATABASE_URL"]
 
 
 def test_artifacts_are_mounted_read_only_not_baked(compose):

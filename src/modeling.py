@@ -42,15 +42,12 @@ from .threshold import metrics_at_threshold, pick_threshold
 #: precision sụp (04 §3.1).
 SAMPLING_STRATEGY = 0.1
 
-MODEL_NAMES = ("logistic_regression", "decision_tree", "random_forest", "xgboost", "lightgbm")
+MODEL_NAMES = ("logistic_regression", "decision_tree", "random_forest", "xgboost")
 STRATEGY_NAMES = ("none", "class_weight", "undersample", "smote", "smote_tomek")
 
 #: Lưới chuẩn trong báo cáo: 5 chiến lược × 4 mô hình = 20 tổ hợp (FR-05)
 DEFAULT_MODELS = ("logistic_regression", "decision_tree", "random_forest", "xgboost")
 DEFAULT_STRATEGIES = STRATEGY_NAMES
-
-#: Mô hình cây nhận mất cân bằng qua scale_pos_weight thay vì class_weight
-_BOOSTED = {"xgboost", "lightgbm"}
 
 
 def _make_estimator(name: str, *, balanced: bool, pos_weight: float, random_state: int, **kwargs):
@@ -90,23 +87,6 @@ def _make_estimator(name: str, *, balanced: bool, pos_weight: float, random_stat
         if balanced:
             params["scale_pos_weight"] = pos_weight
         return XGBClassifier(**{**params, **kwargs})
-
-    if name == "lightgbm":
-        from lightgbm import LGBMClassifier
-
-        params = dict(
-            n_estimators=500,
-            learning_rate=0.05,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            n_jobs=-1,
-            verbose=-1,
-            random_state=random_state,
-        )
-        if balanced:
-            params["scale_pos_weight"] = pos_weight
-        return LGBMClassifier(**{**params, **kwargs})
 
     raise ValueError(f"Mô hình không hỗ trợ: {name!r}. Chọn trong {MODEL_NAMES}.")
 

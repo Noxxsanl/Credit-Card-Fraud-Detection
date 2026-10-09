@@ -24,7 +24,7 @@ from sqlalchemy.engine import make_url
 from api.config import Settings
 from src.config import MODELS_DIR, SAMPLE_POOL_PATH, TEST_SET_PATH
 
-DEFAULT_TEST_URL = "postgresql+psycopg://fraud:fraud@localhost:5432/fraud_test"
+DEFAULT_TEST_URL = "postgresql+psycopg://fraud:fraud@127.0.0.1:5432/fraud_test"
 
 ARTIFACT_FILES = (
     MODELS_DIR / "model.joblib",

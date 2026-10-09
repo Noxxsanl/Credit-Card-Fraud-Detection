@@ -269,7 +269,10 @@
       modelVersion: null,
       modelChanged: false,
       trainedAt: null,
-      threshold: null,          // GET /threshold: current, source, default, cost_fn, cost_fp, alternatives
+      // GET /threshold: current, source, default, cost_fn, cost_fp, alternatives, model_version,
+      // block_threshold (từ điểm này trở lên, và ≥ current, API trả decision = "block" — chọn theo
+      // precision trên OOF), block_min_precision
+      threshold: null,
       thresholdError: null,
       scoresReady: false,
       scoresError: null,
@@ -874,7 +877,6 @@
         constraintValueInput: "",
         m: null,                // chỉ số tại τ đang xem (tập kiểm thử, tính tại máy khách)
         appliedM: null,         // chỉ số tại ngưỡng đang áp dụng
-        calcMs: null,
         latencyMs: null,
         opt: null,              // phản hồi POST /threshold/optimize
         optLoading: false,
@@ -946,10 +948,8 @@
           const t = this.store.threshold;
           const fn = c.valid ? c.fn : t.cost_fn;
           const fp = c.valid ? c.fp : t.cost_fp;
-          const started = performance.now();
           this.m = Scores.metrics(this.tau, fn, fp);
           this.appliedM = Scores.metrics(t.current, fn, fp);
-          this.calcMs = performance.now() - started;
           this.scheduleChart();
         },
 
@@ -959,13 +959,18 @@
           this.recalc();
         },
 
+        /** Từ lúc kéo tới lúc khung hình kế tiếp đã vẽ xong — hai lần requestAnimationFrame. */
+        measure(started) {
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            this.latencyMs = performance.now() - started;
+          }));
+        },
+
         /** Thanh trượt theo thang log10: vùng quyết định 0,0005…0,97 trải ba bậc độ lớn. */
         onSlider(event) {
           const started = event.timeStamp || performance.now();
           this.setTau(10 ** Number(event.target.value));
-          requestAnimationFrame(() => {
-            this.latencyMs = performance.now() - started;
-          });
+          this.measure(started);
         },
 
         /** ←/→ một bước nhỏ, PgUp/PgDn một bước lớn, Home/End hai đầu (07 §5). */
@@ -979,9 +984,7 @@
           event.preventDefault();
           const started = performance.now();
           this.setTau(10 ** clamp(next, LOG_MIN, LOG_MAX));
-          requestAnimationFrame(() => {
-            this.latencyMs = performance.now() - started;
-          });
+          this.measure(started);
         },
 
         onTauInput(event) {
@@ -1201,7 +1204,7 @@
           if (!block) return [];
           // Màu đi theo chiến lược, không theo thứ hạng — lọc hay sắp lại không đổi màu
           const order = ["class_weight", "smote", "smote_tomek", "none", "undersample"];
-          return block.curves.map((c) => ({
+          return [...block.curves].sort((a, b) => order.indexOf(a.strategy) - order.indexOf(b.strategy)).map((c) => ({
             ...c,
             label: LABELS.strategy[c.strategy] || c.strategy,
             colorVar: SERIES[order.indexOf(c.strategy)] || "--ink-3",
@@ -1297,6 +1300,7 @@
       let buffer = [];
       let frame = 0;
       let reconnectTimer = null;
+      let clockTimer = null;
       let clockAnchor = null;      // {sim, wall, speed} — nội suy đồng hồ giữa hai sự kiện stats
       const SPEEDS = [1, 10, 30, 60, 120, 300, 600, 1800, 3600];
       const FEED = 30;
@@ -1317,14 +1321,16 @@
 
         init() {
           window.addEventListener("beforeunload", () => this.disconnect());
-          const tick = () => {
-            if (this.status === "playing" && clockAnchor) {
+          // Đồng hồ mô phỏng: 10 lần mỗi giây là đủ mượt cho HH:MM:SS, và chỉ chạy khi đang phát
+          this.$watch("status", (status) => {
+            clearInterval(clockTimer);
+            if (status !== "playing") return;
+            clockTimer = setInterval(() => {
+              if (!clockAnchor) return;
               const sim = clockAnchor.sim + ((performance.now() - clockAnchor.wall) / 1000) * clockAnchor.speed;
               this.simSeconds = Math.min(sim, 86400);
-            }
-            requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
+            }, 100);
+          });
         },
 
         get speed() {
@@ -1357,7 +1363,7 @@
           seen = new Set();
           buffer = [];
           Object.assign(this, {
-            status: "idle", simSeconds: 0, lastEventSeconds: 0, processed: 0, alerts: 0,
+            status: "idle", simSeconds: 0, lastEventSeconds: 0, processed: 0, alerts: 0, dayTotal: null,
             feed: [], alertList: [], message: "", threshold: null,
           });
           clockAnchor = null;
@@ -1365,7 +1371,7 @@
 
         setSpeed(index) {
           this.speedIndex = Number(index);
-          if (this.status === "playing" || this.status === "connecting") {
+          if (["playing", "connecting", "reconnecting"].includes(this.status)) {
             this.disconnect();
             this.connect(this.lastEventSeconds);
           }

@@ -174,6 +174,18 @@ PostgreSQL thật, không đưa vào pytest (cần trình duyệt và máy chủ
 
 Toàn bộ: 335 xanh, 0 bỏ qua.
 
+### 2.9 Sau rà soát (2026-10-09)
+
+| Tệp | Ca mới hoặc đổi |
+|---|---|
+| `tests/test_threshold.py` | `missed_cost` và `fn_costs` (chi phí theo từng giao dịch) tính tay được; `fn_costs` hằng số trùng `cost_fn`; vụ lọt rẻ đẩy ngưỡng lên; tiêu chí `min_precision` đòi cả phần đuôi, kể cả khi precision chạm mức sớm rồi tụt |
+| `tests/test_scoring.py` | TC-51 theo luật mới (`max(τ, τ_chặn)`); mức chặn không bao giờ dưới τ; `FastScorer` trùng **từng bit** `model.predict_proba` và margin trên cả 56.746 giao dịch; τ_chặn đạt precision ≥ 95% trên OOF, dải review của tập kiểm thử còn gian lận |
+| `tests/test_api.py` | T-48 so SHAP của `/explain` (tính bằng `pred_contribs`) với `explainer.joblib` — trùng từng bit, cùng `base_value`. NFR-01 mang dấu `perf` |
+| `tests/test_packaging.py` | `requirements.txt` gốc ghim `==` và trùng `metrics.json`; ảnh `api` không cài shap; ba cổng chỉ mở trên `127.0.0.1` theo mặc định; mật khẩu DB đọc từ biến môi trường |
+
+Toàn bộ: 350 xanh, 1 bỏ chọn (`perf`), 2 phút 15 giây. `pytest -m perf`: NFR-01 p95 phía máy chủ
+18,7 / 24,1 / 21,0 ms qua ba lần (trước rà soát: 60,6 / 51,3 / 49,9 ms).
+
 Hai kịch bản Puppeteer của giai đoạn 8 nay nằm trong repo (`scripts/ui/flow.js` 21 bước, thêm
 `scripts/ui/keyboard.js` 24 bước cho AC-A9), vẫn ngoài pytest vì cần Chrome và hệ thống đang chạy.
 Kết quả trên hệ thống đóng gói: §4.4.

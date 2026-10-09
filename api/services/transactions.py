@@ -16,7 +16,7 @@ from src.features import AMOUNT_COLUMN, RAW_REQUIRED_COLUMNS, TIME_COLUMN, V_COL
 from ..errors import not_found
 from ..loader import Artifacts
 from ..models_orm import Review, Transaction
-from .scoring import decision, risk_band
+from .scoring import block_cut, decision, risk_band
 
 SORT_COLUMNS = {
     "risk_score": Transaction.risk_score,
@@ -26,13 +26,14 @@ SORT_COLUMNS = {
 }
 
 
-def band_range(band: str, tau: float) -> tuple[float, float]:
+def band_range(band: str, tau: float, tau_block: float) -> tuple[float, float]:
     """Khoảng điểm [thấp, cao) của một dải rủi ro — cùng bảng với ``scoring.risk_bands``."""
-    edges = {"low": (0.0, tau / 2), "medium": (tau / 2, tau), "high": (tau, 3 * tau), "critical": (3 * tau, np.inf)}
+    cut = block_cut(tau, tau_block)
+    edges = {"low": (0.0, tau / 2), "medium": (tau / 2, tau), "high": (tau, cut), "critical": (cut, np.inf)}
     return edges[band]
 
 
-def list_transactions(session: Session, tau: float, *, min_score: float | None, max_score: float,
+def list_transactions(session: Session, tau: float, tau_block: float, *, min_score: float | None, max_score: float,
                       band: str | None, reviewed: bool | None, review_status: str | None,
                       batch_id: str | None, source: str | None, sort: str, page: int, page_size: int) -> dict:
     """Mặc định chỉ lấy giao dịch vượt ngưỡng hiện hành, điểm giảm dần (FR-40, AC-A2).
@@ -46,7 +47,7 @@ def list_transactions(session: Session, tau: float, *, min_score: float | None, 
     if min_score is not None:
         conditions.append(Transaction.risk_score >= min_score)
     if band is not None:
-        low, high = band_range(band, tau)
+        low, high = band_range(band, tau, tau_block)
         conditions.append(Transaction.risk_score >= low)
         if np.isfinite(high):
             conditions.append(Transaction.risk_score < high)
@@ -74,7 +75,7 @@ def list_transactions(session: Session, tau: float, *, min_score: float | None, 
     rows = session.execute(stmt).all()
     total = rows[0].total if rows else _count(session, conditions)
     return {
-        "items": [_item(tx, review_decision, tau) for tx, review_decision, _ in rows],
+        "items": [_item(tx, review_decision, tau, tau_block) for tx, review_decision, _ in rows],
         "page": page,
         "page_size": page_size,
         "total": int(total),
@@ -89,12 +90,12 @@ def _count(session: Session, conditions) -> int:
     return int(session.execute(stmt).scalar_one())
 
 
-def _item(tx: Transaction, review_decision: str | None, tau: float) -> dict:
+def _item(tx: Transaction, review_decision: str | None, tau: float, tau_block: float) -> dict:
     return {
         "id": tx.id,
         "risk_score": tx.risk_score,
-        "risk_band": risk_band(tx.risk_score, tau),
-        "decision": decision(tx.risk_score, tau),
+        "risk_band": risk_band(tx.risk_score, tau, tau_block),
+        "decision": decision(tx.risk_score, tau, tau_block),
         "amount": float(tx.amount),            # NUMERIC → Decimal, ép về float (ST-07)
         "hour": tx.hour,
         "true_label": tx.true_label,
@@ -130,8 +131,8 @@ def detail(session: Session, loaded: Artifacts, tx_id: str, tau: float) -> dict:
         "id": tx.id,
         "features": raw_features(tx),
         "risk_score": tx.risk_score,
-        "risk_band": risk_band(tx.risk_score, tau),
-        "decision": decision(tx.risk_score, tau),
+        "risk_band": risk_band(tx.risk_score, tau, loaded.block_threshold),
+        "decision": decision(tx.risk_score, tau, loaded.block_threshold),
         "threshold": tau,
         "amount": amount,
         # So với phân bố của tập kiểm thử, không với bảng transactions: bảng chỉ chứa những gì

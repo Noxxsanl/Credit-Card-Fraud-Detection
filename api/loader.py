@@ -4,6 +4,10 @@ API không huấn luyện, không đọc ``creditcard.csv``. Nó chỉ nạp cá
 đã xuất, kiểm tra chúng bằng chính các hàm ``validate_*`` của ``src/artifacts.py``,
 rồi giữ trong bộ nhớ suốt vòng đời tiến trình.
 
+Sáu tệp: ``model.joblib``, ``metrics.json``, ``threshold.json``, ``oof_scores.npz``,
+``test_set.parquet``, ``sample_pool.json``. ``explainer.joblib`` không còn cần: SHAP tính bằng
+``pred_contribs`` của XGBoost (``api/serving.py``), trùng từng bit với tệp đó.
+
 Hiện vật thiếu hay sai thì ``load_artifacts`` ném ``ArtifactError``. ``main.py`` bắt
 lỗi đó để tiến trình vẫn sống và ``/health`` trả 503 ``MODEL_NOT_LOADED`` thay vì
 sập (TC-42).
@@ -23,8 +27,10 @@ import pandas as pd
 
 from src import artifacts as art
 from src.features import RAW_REQUIRED_COLUMNS, build_features
+from src.threshold import pick_threshold
 
-from .config import Settings
+from .config import BLOCK_MIN_PRECISION, Settings
+from .serving import FastScorer, UnsupportedPipeline
 
 log = logging.getLogger("api")
 
@@ -34,6 +40,10 @@ DAY_TWO_START = 86_400.0
 #: Số luồng XGBoost khi chấm điểm lúc phục vụ (xem load_artifacts)
 SERVING_THREADS = 1
 
+#: Thư viện mà API thật sự nạp lúc chạy — chỉ những gói này mới cần trùng phiên bản lúc xuất
+#: hiện vật. shap có trong metrics.json (notebook dùng) nhưng ảnh api không cài.
+SERVING_PACKAGES = ("numpy", "pandas", "scikit-learn", "imbalanced-learn", "xgboost", "joblib")
+
 
 class ArtifactError(RuntimeError):
     pass
@@ -42,7 +52,7 @@ class ArtifactError(RuntimeError):
 @dataclass
 class Artifacts:
     model: object
-    explainer: object
+    scorer: FastScorer
     metrics: dict
     threshold: dict
     oof: dict
@@ -56,6 +66,8 @@ class Artifacts:
     amounts_sorted: np.ndarray = field(repr=False, default=None)
     samples_by_id: dict = field(repr=False, default_factory=dict)
     metrics_json: bytes = field(repr=False, default=b"")
+    #: Từ ngưỡng này trở lên API đề xuất chặn (05 §2) — chọn trên out-of-fold, xem block_threshold_from
+    block_threshold: float = 1.0
 
     @property
     def model_version(self) -> str:
@@ -78,10 +90,6 @@ class Artifacts:
         return float(self.metrics["dataset"]["days"])
 
     @property
-    def base_value(self) -> float:
-        return float(np.ravel(self.explainer.expected_value)[0])
-
-    @property
     def model_feature_names(self) -> list[str]:
         return list(self.metrics["training"]["model_feature_names"])
 
@@ -99,7 +107,6 @@ def load_artifacts(settings: Settings) -> Artifacts:
     models = settings.models_dir
     paths = {
         "model": models / "model.joblib",
-        "explainer": models / "explainer.joblib",
         "metrics": models / "metrics.json",
         "threshold": models / "threshold.json",
         "oof": models / "oof_scores.npz",
@@ -132,7 +139,12 @@ def load_artifacts(settings: Settings) -> Artifacts:
     # 56.746 giao dịch; chỉ huấn luyện mới phụ thuộc — docs/10 §6), còn 12 luồng cho một giao dịch
     # chỉ tốn chi phí đồng bộ và tranh CPU với các yêu cầu khác: p95 của /score giảm khoảng một nửa.
     model[-1].set_params(n_jobs=SERVING_THREADS)
-    explainer = joblib.load(paths["explainer"])
+    try:
+        scorer = FastScorer(model)
+    except UnsupportedPipeline as exc:
+        raise ArtifactError(f"model.joblib không đúng dạng pipeline mà API phục vụ được: {exc}") from exc
+    if scorer.feature_names != list(metrics["training"]["model_feature_names"]):
+        raise ArtifactError("thứ tự đặc trưng của model.joblib khác metrics.json → training.model_feature_names")
 
     test_set = pd.read_parquet(paths["test_set"])
     missing_columns = [c for c in (*RAW_REQUIRED_COLUMNS, "Class") if c not in test_set.columns]
@@ -152,13 +164,23 @@ def load_artifacts(settings: Settings) -> Artifacts:
 
     # Unpickle thành công chưa đủ: lệch phiên bản thư viện có thể cho điểm khác mà không báo lỗi
     probe = test_set.iloc[:: max(1, len(test_set) // 50)]
-    rescored = model.predict_proba(build_features(probe))[:, 1].astype("float64")
+    probe_features = build_features(probe)
+    rescored = model.predict_proba(probe_features)[:, 1].astype("float64")
     if not np.allclose(rescored, probe["risk_score"].to_numpy(), rtol=0, atol=1e-6):
         raise ArtifactError("model.joblib chấm lại tập kiểm thử ra điểm khác — lệch phiên bản thư viện?")
+    # Đường tắt phải là CÙNG phép tính, không phải một phép gần đúng: so khớp từng bit
+    if not np.array_equal(scorer.predict(probe_features), rescored):
+        raise ArtifactError("đường chấm nhanh (api/serving.py) lệch pipeline đầy đủ — không phục vụ")
+    shap_values, bias = scorer.contributions(probe_features.iloc[:5])
+    if not np.allclose(bias, metrics["training"]["shap_base_value"], rtol=0, atol=1e-5):
+        raise ArtifactError("giá trị cơ sở SHAP khác metrics.json → training.shap_base_value")
+    if not np.allclose(shap_values.sum(axis=1) + bias, scorer.margin(probe_features.iloc[:5]), rtol=0, atol=1e-3):
+        raise ArtifactError("SHAP không cộng đủ thành margin của mô hình")
 
+    oof_candidates = np.unique(oof["y_score"])
     loaded = Artifacts(
         model=model,
-        explainer=explainer,
+        scorer=scorer,
         metrics=metrics,
         threshold=threshold,
         oof=oof,
@@ -167,18 +189,34 @@ def load_artifacts(settings: Settings) -> Artifacts:
         loaded_at=datetime.now(timezone.utc),
         y_test=y_test,
         s_test=s_test,
-        oof_candidates=np.unique(oof["y_score"]),
+        oof_candidates=oof_candidates,
         amounts_sorted=np.sort(test_set["Amount"].to_numpy(dtype="float64")),
         samples_by_id={item["id"]: item for item in sample_pool["items"]},
         metrics_json=json.dumps(metrics, ensure_ascii=False, allow_nan=False).encode("utf-8"),
+        block_threshold=block_threshold_from(oof, oof_candidates),
     )
-    log.info("Đã nạp hiện vật %s (huấn luyện %s), τ* = %.6f", loaded.model_version, loaded.trained_at,
-             loaded.default_threshold)
+    log.info("Đã nạp hiện vật %s (huấn luyện %s), τ* = %.6f, ngưỡng đề xuất chặn = %.4f (precision ≥ %.0f%% "
+             "trên out-of-fold)", loaded.model_version, loaded.trained_at, loaded.default_threshold,
+             loaded.block_threshold, BLOCK_MIN_PRECISION * 100)
     return loaded
+
+
+def block_threshold_from(oof: dict, candidates: np.ndarray, min_precision: float = BLOCK_MIN_PRECISION) -> float:
+    """Ngưỡng "đề xuất chặn": nhỏ nhất mà mọi ngưỡng từ đó trở lên có precision ≥ ``min_precision``
+    trên out-of-fold (05 §2).
+
+    Chặn tự động một khách hợp lệ đắt hơn nhiều một cảnh báo giả phải thẩm định, nên mức chặn
+    đặt theo precision mong muốn chứ không theo bội số của τ. Chọn trên out-of-fold như mọi
+    ngưỡng khác (ML-08); không phụ thuộc τ người dùng đặt.
+    """
+    return pick_threshold(oof["y_true"], oof["y_score"], "min_precision", value=min_precision,
+                          thresholds=candidates, sample_fraction=oof["train_fraction"], days=oof["days"])
 
 
 def _warn_on_version_drift(expected: dict) -> None:
     for package, version in expected.items():
+        if package not in SERVING_PACKAGES:
+            continue
         try:
             installed = metadata.version(package)
         except metadata.PackageNotFoundError:

@@ -14,13 +14,17 @@
 # Cổng trên máy chủ đọc từ biến môi trường hoặc .env — đổi khi cổng đã bị chiếm:
 #   POSTGRES_HOST_PORT (mặc định 5432), API_HOST_PORT (8000), WEB_HOST_PORT (3000).
 # Bản giao diện: WEB_UI=frontend (Next.js, mặc định) hoặc WEB_UI=web (HTML + Alpine.js).
+#
+# Mạng: API không có đăng nhập (ngoài phạm vi, docs/00 §3.2) và PUT /threshold đổi được ngưỡng của cả hệ thống, nên
+# mặc định cả ba cổng chỉ mở trên 127.0.0.1 — máy khác cùng Wi-Fi không vào được. Cần trình chiếu
+# từ máy khác thì đặt BIND_ADDRESS=0.0.0.0 trong .env (và đổi POSTGRES_PASSWORD).
 
 services:
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: fraud
-      POSTGRES_PASSWORD: fraud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fraud}
       POSTGRES_DB: fraud
       TZ: UTC
       PGTZ: UTC
@@ -28,7 +32,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       # Để psql, pytest và uvicorn chạy trên máy nối vào khi phát triển (docs/10 §4.2)
-      - "${POSTGRES_HOST_PORT:-5432}:5432"
+      - "${BIND_ADDRESS:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
     healthcheck:
       # -h 127.0.0.1: kiểm qua TCP. Lúc initdb, máy chủ tạm của postgres chỉ nghe socket Unix rồi
       # tắt đi khởi động lại — kiểm qua socket sẽ báo khỏe sớm, đúng lúc nó sắp tắt.
@@ -47,7 +51,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+psycopg://fraud:fraud@db:5432/fraud
+      DATABASE_URL: postgresql+psycopg://fraud:${POSTGRES_PASSWORD:-fraud}@db:5432/fraud
       # Chỉ dùng khi gọi thẳng cổng 8000 từ trình duyệt; qua cổng 3000 thì nginx chuyển tiếp,
       # cùng origin, không cần CORS
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
@@ -55,7 +59,7 @@ services:
       - ./models:/app/models:ro
       - ./data:/app/data:ro
     ports:
-      - "${API_HOST_PORT:-8000}:8000"
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-8000}:8000"
     healthcheck:
       # urlopen ném lỗi với 503, nên "khỏe" nghĩa là đã nạp hiện vật VÀ nối được db (API-01)
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"]
@@ -73,7 +77,7 @@ services:
       api:
         condition: service_started
     ports:
-      - "${WEB_HOST_PORT:-3000}:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_HOST_PORT:-3000}:80"
 
 volumes:
   pgdata:

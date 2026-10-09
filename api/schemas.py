@@ -256,6 +256,8 @@ class ThresholdState(BaseModel):
     cost_fp: float
     alternatives: dict[str, float]
     model_version: str
+    block_threshold: float = Field(description="Từ điểm này trở lên decision = block (khi ≥ current), 05 §2")
+    block_min_precision: float = Field(description="Precision tối thiểu trên out-of-fold dùng để chọn block_threshold")
 
 
 class ThresholdUpdate(BaseModel):
