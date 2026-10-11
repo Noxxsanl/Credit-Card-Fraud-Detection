@@ -20,6 +20,8 @@ from src.threshold import (
     sensitivity_analysis,
     sweep,
     threshold_alternatives,
+    capacity_for_recall,
+    constrained_min_cost,
     threshold_grid,
 )
 
@@ -259,12 +261,68 @@ def test_alternatives_contains_all_four_options_plus_naive(scores):
 
     assert set(alternatives) == {
         "min_expected_cost",
+        "min_cost_within_budget",
         "max_f1",
         "recall_at_least_90",
         "budget_200_alerts",
         "default_naive",
     }
     assert all(0 < value < 1 for value in alternatives.values())
+
+
+# --------------------------------------------------------------------------
+# Ngưỡng mặc định có ràng buộc ngân sách (docs/11 M1)
+# --------------------------------------------------------------------------
+
+def test_min_cost_within_budget_respects_the_budget_and_is_cheapest_there(scores):
+    y_true, y_scores = scores
+    exact = np.unique(y_scores)
+    budget = 0.5 * metrics_at_threshold(y_true, y_scores, pick_threshold(
+        y_true, y_scores, "min_expected_cost", thresholds=exact)).alerts_per_day
+
+    tau = pick_threshold(y_true, y_scores, "min_cost_within_budget", value=budget, thresholds=exact)
+    chosen = metrics_at_threshold(y_true, y_scores, tau)
+    assert chosen.alerts_per_day <= budget
+
+    table = cost_curve(y_true, y_scores, thresholds=exact)
+    feasible = table[table["alerts_per_day"] <= budget]
+    assert chosen.expected_cost == pytest.approx(feasible["expected_cost"].min())
+
+
+def test_min_cost_within_a_loose_budget_is_the_unconstrained_optimum(scores):
+    y_true, y_scores = scores
+    exact = np.unique(y_scores)
+    loose = pick_threshold(y_true, y_scores, "min_cost_within_budget", value=1e12, thresholds=exact)
+    assert loose == pick_threshold(y_true, y_scores, "min_expected_cost", thresholds=exact)
+
+
+def test_min_cost_within_an_impossible_budget_falls_back_to_the_fewest_alerts(scores):
+    y_true, y_scores = scores
+    tau = pick_threshold(y_true, y_scores, "min_cost_within_budget", value=1e-9)
+    assert tau == cost_curve(y_true, y_scores)["threshold"].max()
+    with pytest.raises(ValueError, match="value"):
+        pick_threshold(y_true, y_scores, "min_cost_within_budget")
+
+
+def test_constrained_min_cost_reports_feasibility(scores):
+    y_true, y_scores = scores
+    table = cost_curve(y_true, y_scores)
+    assert constrained_min_cost(table, "none", None) == (float(table.loc[table["expected_cost"].idxmin(), "threshold"]), True)
+    tau, ok = constrained_min_cost(table, "min_recall", 0.5)
+    assert ok and metrics_at_threshold(y_true, y_scores, tau).recall >= 0.5
+    assert constrained_min_cost(table, "min_recall", 1.01) == (float(table["threshold"].min()), False)
+    with pytest.raises(ValueError):
+        constrained_min_cost(table, "max_f1", 0.5)
+
+
+def test_capacity_for_recall_is_the_alert_load_at_the_largest_threshold_reaching_it(scores):
+    y_true, y_scores = scores
+    exact = np.unique(y_scores)
+    need = capacity_for_recall(y_true, y_scores, 0.75, thresholds=exact)
+    assert need["recall"] >= 0.75
+    tau = pick_threshold(y_true, y_scores, "min_recall", value=0.75, thresholds=exact)
+    assert need["threshold"] == tau
+    assert need["alerts_per_day"] == pytest.approx(metrics_at_threshold(y_true, y_scores, tau).alerts_per_day)
 
 
 def test_compare_thresholds_returns_one_row_per_option(scores):

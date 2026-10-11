@@ -6,11 +6,11 @@ khác ghi vào thư mục này, và API chỉ đọc (AR-01). Cấu trúc chi ti
 
 | Tệp | Nội dung | Trong git? |
 |---|---|---|
-| `model.joblib` | pipeline hoàn chỉnh: `RobustScaler` cho `Amount` → `XGBClassifier`. Đầu vào là `build_features(df)` | Không — sinh lại từ notebook 08 |
+| `model.joblib` | pipeline hoàn chỉnh: `RobustScaler` cho `Amount` → `XGBClassifier`, cấu hình theo `FINAL_MODEL`, `FINAL_STRATEGY`, `FINAL_RATIO` của `src/config.py`. Đầu vào là `build_features(df)` | Không — sinh lại từ notebook 08 |
 | `explainer.joblib` | `shap.TreeExplainer` của bước `clf`. Đầu vào là `model[:-1].transform(build_features(df))`. Notebook và kiểm thử dùng; API **không** nạp (SHAP bằng `pred_contribs` của XGBoost, trùng từng bit) | Không |
-| `threshold.json` | ngưỡng mặc định τ\* và 4 phương án, chọn trên out-of-fold; tham số chi phí | Nên có (dưới 1 KB) |
-| `metrics.json` | chỉ số kèm khoảng tin cậy, đường PR/ROC/chi phí, điểm tập kiểm thử, bảng 20 tổ hợp, SHAP toàn cục | Có cân nhắc (1,6 MB) |
-| `oof_scores.npz` | 226.980 điểm out-of-fold và nhãn của tập huấn luyện — API chọn ngưỡng trên đây (ML-08) | Không |
+| `threshold.json` | ngưỡng mặc định — chi phí nhỏ nhất trong ngân sách 200 cảnh báo/ngày (`selection_method: min_cost_within_budget`) — và các phương án khác, tất cả chọn trên điểm chọn ngưỡng (`selected_on: temporal_out_of_fold`); tham số chi phí, ràng buộc | Nên có (dưới 1 KB) |
+| `metrics.json` | chỉ số kèm khoảng tin cậy, đường PR/ROC/chi phí, điểm tập kiểm thử, bảng 20 tổ hợp, SHAP toàn cục, kết quả nghiệm thu (`acceptance`), cách sinh điểm chọn ngưỡng (`selection`), commit git | Có cân nhắc (1,6 MB) |
+| `oof_scores.npz` | **điểm chọn ngưỡng**: điểm out-of-fold forward-chaining theo `Time` của tập huấn luyện, kèm nhãn, `method`, `train_fraction`, `days`. API chọn ngưỡng (API-12), xem trước (API-11) và gửi cho thanh trượt UI-D1 (API-17) trên bộ điểm này — không trên tập kiểm thử (ML-08, [docs/11](../docs/11-review-ml-va-ke-hoach-sua.md) M2, M3) | Không |
 
 Sinh lại:
 

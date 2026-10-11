@@ -280,10 +280,74 @@ def test_leak_4_every_cross_validation_is_stratified():
     assert _hits(r"cv\s*=\s*\d") == [], "cv=<số> để sklearn tự chọn KFold/StratifiedKFold"
 
 
-def test_leak_5_threshold_is_never_picked_on_test_labels():
-    """Ô 5 — ngưỡng chọn trên điểm out-of-fold hoặc tập huấn luyện (ML-08)."""
-    pattern = r"(pick_threshold|threshold_alternatives|sensitivity_analysis)\(\s*\w*test"
-    assert _hits(pattern) == []
+#: Lệnh CHỌN ngưỡng — tham số đầu là nhãn của tập dùng để chọn
+_SELECTION_CALL = re.compile(
+    r"\b(pick_threshold|policy_threshold|threshold_alternatives|sensitivity_analysis|capacity_for_recall)"
+    r"\(\s*([^,\)]+)")
+#: Nhãn được phép: của tập huấn luyện (``y_sel``, ``y_n1_sel``: phần có điểm forward-chaining của tập
+#: huấn luyện / của ngày 1), của điểm out-of-fold, hoặc tên tham số chung trong thư viện
+_TRAINING_LABELS = re.compile(
+    r'^(y|y_true|y_train|y_tr|y_n1|y_sel|y_n1_sel)(\[[^\]]*\])?$|^\w*oof\w*\["y_true"\]$|^SEL\w*\["y_true"\]$')
+
+
+def test_leak_5_threshold_is_only_picked_on_training_labels():
+    """Ô 5 — ngưỡng chọn trên điểm out-of-fold hoặc tập huấn luyện (ML-08).
+
+    Danh sách CHO PHÉP thay cho danh sách cấm cũ (chỉ bắt tên có chữ "test"): nhãn kiểm thử mang
+    tên khác — như ``y_n2`` của ngày 2 ở notebook 05 — vẫn lọt danh sách cấm (docs/11 m4). Quét cả
+    ``api/``, nơi ``POST /threshold/optimize`` chọn ngưỡng lúc chạy.
+    """
+    sources = dict(_sources())
+    for path in ROOT.glob("api/**/*.py"):
+        sources[path.relative_to(ROOT).as_posix()] = _strip_comments(path.read_text(encoding="utf-8"))
+    bad = [f"{name}: {m.group(0)}" for name, code in sources.items() for m in _SELECTION_CALL.finditer(code)
+           if not _TRAINING_LABELS.match(m.group(2).strip())]
+    assert bad == []
+
+
+def test_leak_5_pattern_rejects_test_labels_under_any_name():
+    """Danh sách cho phép phải từ chối mọi biến nhãn không thuộc tập huấn luyện."""
+    for arg in ("y_test", "y_n2", "y_te", "y_tep", "labels", "y_test[mask]"):
+        assert not _TRAINING_LABELS.match(arg), arg
+    for arg in ("y_train", "y_train[ok]", "y_tr", "y", "y_true", 'oof["y_true"]', 'oof_doc_lai["y_true"]'):
+        assert _TRAINING_LABELS.match(arg), arg
+
+
+# --------------------------------------------------------------------------
+# Canary theo hành vi (docs/11 m4)
+#
+# Các kiểm thử quét mã ở trên chỉ bắt được những mẫu lỗi đã biết trước. Canary kiểm KẾT QUẢ: với
+# nhãn bị xáo ngẫu nhiên, không pipeline nào được phép học ra gì — PR-AUC out-of-fold phải quanh
+# tỷ lệ lớp dương. Đối chứng dương cho thấy canary đủ nhạy: lấy mẫu lại TRƯỚC khi chia fold (lỗi
+# rò rỉ kinh điển) làm PR-AUC vọt lên dù nhãn là ngẫu nhiên.
+# --------------------------------------------------------------------------
+
+from sklearn.metrics import average_precision_score  # noqa: E402
+
+
+def _shuffled(y):
+    return pd.Series(np.random.default_rng(42).permutation(np.asarray(y)))
+
+
+@pytest.mark.parametrize("strategy", ("none", "class_weight", "undersample", "smote"))
+def test_canary_shuffled_labels_give_chance_level_pr_auc(dataset, strategy):
+    X, y = dataset
+    y_perm = _shuffled(y)
+    scores = oof_scores(build_pipeline("xgboost", strategy, y=y_perm), X, y_perm)
+    assert average_precision_score(y_perm, scores) < 3 * y_perm.mean()
+
+
+def test_canary_detects_resampling_outside_the_pipeline(dataset):
+    """Đối chứng dương: SMOTE trên TOÀN BỘ dữ liệu rồi mới cross-validate — đúng lỗi mà ô 1 cấm."""
+    from imblearn.over_sampling import SMOTE
+
+    X, y = dataset
+    y_perm = _shuffled(y)
+    X_leak, y_leak = SMOTE(sampling_strategy=0.5, random_state=RANDOM_STATE).fit_resample(X, y_perm)
+    scores = oof_scores(build_pipeline("xgboost", "none", y=y_leak), X_leak, y_leak)
+    # Nhãn ngẫu nhiên nên PR-AUC trung thực phải quanh tỷ lệ dương (1/3 sau SMOTE 1:2); điểm tổng hợp
+    # nằm sát "cha mẹ" của nó ở fold huấn luyện nên mô hình nhận ra được — PR-AUC vọt lên.
+    assert average_precision_score(y_leak, scores) > 2 * y_leak.mean()
 
 
 def test_leak_6_duplicates_removed_before_split_leave_no_shared_rows():

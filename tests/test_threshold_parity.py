@@ -102,7 +102,7 @@ def exported():
 
 
 def sample_thresholds(y_true, y_score, threshold: dict) -> list[float]:
-    """20 ngưỡng mẫu, dồn vào những chỗ dễ lệch nhất: đúng bằng một điểm có thật."""
+    """Khoảng 20 ngưỡng mẫu, dồn vào những chỗ dễ lệch nhất: đúng bằng một điểm có thật."""
     scores = np.asarray(y_score, dtype="float64")
     labels = np.asarray(y_true)
     positives = np.unique(scores[labels == 1])
@@ -110,7 +110,7 @@ def sample_thresholds(y_true, y_score, threshold: dict) -> list[float]:
     first_alert = float(scores[scores >= tau_star].min())
 
     picks = [
-        *threshold["alternatives"].values(),                        # 5 phương án của threshold.json
+        *threshold["alternatives"].values(),                        # mọi phương án của threshold.json
         *positives[[0, 10, 40, 80, -1]],                            # 5 điểm gian lận có thật (hòa tại biên)
         first_alert,                                                # điểm nhỏ nhất còn bị cảnh báo ở τ*
         np.nextafter(first_alert, 0.0),                             # nhỏ hơn đúng một ulp
@@ -127,7 +127,7 @@ def test_tc12_parity_on_exported_test_scores(impl, exported):
     y_true = metrics["test_scores"]["y_true"]
     y_score = metrics["test_scores"]["y_score"]
     thresholds = sample_thresholds(y_true, y_score, threshold)
-    assert len(set(thresholds)) == 20
+    assert len(set(thresholds)) == len(thresholds) >= 20          # đều khác nhau — không ca nào thừa
 
     results = assert_parity(
         impl, y_true, y_score, thresholds,
@@ -198,3 +198,111 @@ def test_frontend_uses_this_module():
     assert any("metricsAt(" in sources[p] for p in importers)
     for path, text in sources.items():
         assert not _HANDMADE_COMPARISON.search(text), path
+
+
+# --------------------------------------------------------------------------
+# Điểm chọn ngưỡng qua payload nhị phân (docs/11 M3)
+#
+# Từ review 2026-10-10, màn hình Ngưỡng tính trên điểm out-of-fold do GET /threshold/oof-scores
+# gửi dưới dạng nhị phân, không trên tập kiểm thử. Ca dưới chạy CHÍNH hàm decodeSortedScores của
+# hai giao diện trên payload do src/artifacts.py dựng, rồi so từng chỉ số với Python.
+# --------------------------------------------------------------------------
+
+_DECODE_RUNNER = r"""
+import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
+const mod = await import(pathToFileURL(process.argv[1]).href);
+const T = mod.default ?? mod;
+const bytes = readFileSync(process.argv[2]);
+const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+const d = JSON.parse(readFileSync(process.argv[3], "utf8"));
+const decoded = T.decodeSortedScores(buffer);
+const options = { costFn: d.costFn, costFp: d.costFp, sampleFraction: decoded.sampleFraction, days: decoded.days };
+const out = d.thresholds.map((t) => T.metricsAt(decoded.prepared, t, options));
+const meta = { sampleFraction: decoded.sampleFraction, days: decoded.days, n: decoded.prepared.n, nPos: decoded.prepared.nPos };
+process.stdout.write(JSON.stringify({ meta, out }));
+"""
+
+
+def run_js_decode(impl, payload: bytes, thresholds, *, cost_fn, cost_fp, tmp_path) -> dict:
+    blob = tmp_path / "scores.bin"
+    blob.write_bytes(payload)
+    params = tmp_path / "params.json"
+    params.write_bytes(json.dumps({"thresholds": [float(t) for t in thresholds],
+                                   "costFn": cost_fn, "costFp": cost_fp}).encode("utf-8"))
+    done = subprocess.run([NODE, "--input-type=module", "-e", _DECODE_RUNNER, str(impl), str(blob), str(params)],
+                          capture_output=True, text=True, encoding="utf-8", timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+def assert_decoded_parity(impl, y_true, y_score, thresholds, *, sample_fraction, days, cost_fn, cost_fp, tmp_path):
+    from src.artifacts import sorted_scores_payload
+
+    payload = sorted_scores_payload(y_true, y_score, sample_fraction=sample_fraction, days=days)
+    result = run_js_decode(impl, payload, thresholds, cost_fn=cost_fn, cost_fp=cost_fp, tmp_path=tmp_path)
+    assert result["meta"] == {"sampleFraction": sample_fraction, "days": days,
+                              "n": len(y_true), "nPos": int(np.sum(y_true))}
+    for tau, js in zip(thresholds, result["out"]):
+        py = metrics_at_threshold(y_true, y_score, tau, cost_fn=cost_fn, cost_fp=cost_fp,
+                                  sample_fraction=sample_fraction, days=days).as_dict()
+        assert set(js) == set(py)
+        for key, value in py.items():
+            assert js[key] == value, f"τ = {tau!r}, {key}: JS {js[key]!r} ≠ Python {value!r}"
+
+
+def test_tc12_parity_on_exported_selection_scores(impl, exported, tmp_path):
+    """Đúng đường đi thật: oof_scores.npz → payload nhị phân → trình duyệt → chỉ số."""
+    from src.artifacts import read_oof_scores
+    from src.config import OOF_SCORES_PATH
+
+    if not OOF_SCORES_PATH.exists():
+        pytest.skip("Chưa có models/oof_scores.npz")
+    _, threshold = exported
+    oof = read_oof_scores(OOF_SCORES_PATH)
+    thresholds = sample_thresholds(oof["y_true"], oof["y_score"], threshold)
+    assert_decoded_parity(impl, oof["y_true"], oof["y_score"], thresholds,
+                          sample_fraction=oof["train_fraction"], days=oof["days"],
+                          cost_fn=threshold["cost_false_negative"], cost_fp=threshold["cost_false_positive"],
+                          tmp_path=tmp_path)
+
+
+@pytest.mark.parametrize("dtype", ("float32", "float64"))
+def test_tc12_parity_of_the_binary_payload_on_synthetic_scores(impl, dtype, tmp_path):
+    """float32 đi đường 4 byte; điểm không biểu diễn đúng bằng float32 phải đi đường 8 byte."""
+    rng = np.random.default_rng(13)
+    y_true = (rng.random(4_000) < 0.03).astype(int)
+    y_score = rng.random(4_000)
+    if dtype == "float32":
+        y_score = y_score.astype("float32").astype("float64")
+    thresholds = [float(t) for t in np.sort(y_score)[::173]] + [0.0, 0.5, 1.0]
+    assert_decoded_parity(impl, y_true, y_score, thresholds, sample_fraction=0.8, days=1.6,
+                          cost_fn=115.94, cost_fp=5.0, tmp_path=tmp_path)
+
+
+def _threshold_screen_block(app: str) -> str:
+    start = app.index('Alpine.data("thresholdScreen"')
+    end = app.index("Alpine.data(", start + 1)
+    return app[start:end]
+
+
+def test_web_threshold_screen_uses_selection_scores_not_the_test_set():
+    """Kéo thanh trượt là đang CHỌN ngưỡng — mọi con số phải trên điểm chọn ngưỡng (docs/11 M3)."""
+    app = (WEB_DIR / "app.js").read_text(encoding="utf-8")
+    assert "FraudThreshold.decodeSortedScores(" in app and "/threshold/oof-scores" in app
+    block = _threshold_screen_block(app)
+    assert "Selection.metrics(" in block
+    assert "Scores.metrics(" not in block and "Scores.perDay(" not in block
+
+
+def test_frontend_threshold_screen_uses_selection_scores_not_the_test_set():
+    if not FRONTEND_SRC.exists():
+        pytest.skip("Chưa có frontend/")
+    scores_lib = (FRONTEND_SRC / "lib" / "scores.ts").read_text(encoding="utf-8")
+    context = (FRONTEND_SRC / "context" / "AppContext.tsx").read_text(encoding="utf-8")
+    screen = (FRONTEND_SRC / "components" / "screens" / "ThresholdScreen.tsx").read_text(encoding="utf-8")
+    assert "decodeSortedScores(" in scores_lib
+    assert '"/threshold/oof-scores"' in context
+    # Màn hình không lấy bộ điểm tập kiểm thử ra để tính
+    assert not re.search(r"const \{[^}]*\bscores\b[^}]*\} = app", screen)
+    assert re.search(r"const \{[^}]*\bselection\b[^}]*\} = app", screen)

@@ -2,7 +2,7 @@
 
 Chạy: streamlit run app.py
 
-Dùng đúng hiện vật mà API dùng — ``models/model.joblib`` (pipeline hoàn chỉnh), τ* trong
+Dùng đúng hiện vật mà API dùng — ``models/model.joblib`` (pipeline hoàn chỉnh), ngưỡng mặc định trong
 ``models/threshold.json`` và thư viện mẫu ``data/sample_pool.json`` — nên không cần
 PostgreSQL, Docker hay ``creditcard.csv``. Đặc trưng sinh bằng ``build_features`` như lúc
 huấn luyện (ranh giới chống lệch train/serve, 03 §4).
@@ -21,7 +21,7 @@ CATEGORY_LABELS = {
     "fraud_easy": "Gian lận dễ",
     "fraud_hard": "Gian lận khó (ngưỡng 0,5 bỏ lọt)",
     "legit_easy": "Hợp lệ dễ",
-    "legit_hard": "Hợp lệ khó (cảnh báo giả ở τ*)",
+    "legit_hard": "Hợp lệ khó (cảnh báo giả, hoặc sát dưới ngưỡng mặc định)",
 }
 
 st.set_page_config(page_title="Fraud Detection Demo", page_icon="💳", layout="wide")
@@ -66,12 +66,16 @@ if model is None or threshold_info is None:
     )
     st.stop()
 
-tau_star = float(threshold_info["default_threshold"])
+tau_mac_dinh = float(threshold_info["default_threshold"])
 threshold = st.sidebar.number_input(
-    "Ngưỡng cảnh báo τ", min_value=0.0001, max_value=0.9999, value=tau_star, step=0.001, format="%.4f",
+    "Ngưỡng cảnh báo τ", min_value=0.0001, max_value=0.9999, value=tau_mac_dinh, step=0.001, format="%.4f",
 )
+ngan_sach = threshold_info.get("constraints", {}).get("alert_budget_per_day")
+cach_chon = ("chi phí kỳ vọng nhỏ nhất trong các ngưỡng có tối đa "
+             f"{ngan_sach:g} cảnh báo/ngày" if threshold_info["selection_method"] == "min_cost_within_budget"
+             and ngan_sach else "cực tiểu chi phí kỳ vọng")
 st.sidebar.caption(
-    f"Mặc định τ* = {tau_star:.4f}: cực tiểu chi phí kỳ vọng, chọn trên out-of-fold "
+    f"Mặc định τ = {tau_mac_dinh:.4f}: {cach_chon}, chọn trên điểm out-of-fold của tập huấn luyện "
     f"(bỏ lọt {threshold_info['cost_false_negative']:g}, thẩm định {threshold_info['cost_false_positive']:g} "
     "mỗi cảnh báo). Hạ ngưỡng: bắt thêm gian lận, thêm cảnh báo giả."
 )

@@ -129,7 +129,7 @@ function Topbar({ title, onThresholdScreen }: { title: string; onThresholdScreen
           <span className="text-[12.5px] text-ink-2">Ngưỡng</span>
           <strong className="text-[15px] tabular-nums">{fmt.tau(threshold?.current)}</strong>
           {threshold && (
-            <span className="text-[11.5px] text-muted">{threshold.source === "user" ? "đã đặt" : "τ* mặc định"}</span>
+            <span className="text-[11.5px] text-muted">{threshold.source === "user" ? "đã đặt" : "ngưỡng mặc định"}</span>
           )}
           {!onThresholdScreen && (
             <Link href="/threshold" className="btn btn-sm">

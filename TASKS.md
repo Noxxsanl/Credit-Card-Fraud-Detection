@@ -766,12 +766,33 @@ lỗi"); bỏ nó ngay trước buổi bảo vệ là tăng rủi ro.
 
 ---
 
+## Review phần ML và sửa (2026-10-10 → 2026-10-11)
+
+Lượt review thứ hai, chỉ phần học máy: [docs/11](docs/11-review-ml-va-ke-hoach-sua.md) (bản review, kế
+hoạch sửa và trạng thái từng mục ở §6). Tóm tắt những gì đã đổi:
+
+| # | Vấn đề | Đã làm | Kết quả |
+|---|---|---|---|
+| M1 | τ\* tự do làm mặc định dù vượt ngân sách thẩm định 44% | Ngưỡng mặc định = chi phí nhỏ nhất trong ≤ 200 cảnh báo/ngày (`min_cost_within_budget`); AC-M2 ghi kèm điều kiện vào `metrics.json → acceptance` | τ = 0,2675, recall test 0,758 [0,674; 0,842], 187 cảnh báo/ngày |
+| M2 | Ngưỡng chọn trên CV ngẫu nhiên; ngày mới tải gần gấp đôi | Điểm chọn ngưỡng forward-chaining theo `Time`; đối chứng ngày 1 → ngày 2; `GET /monitoring` + thẻ theo dõi ở UI-04 | Ước tính tải ×1,46 (CV ngẫu nhiên ×1,65) |
+| M3 | Thanh trượt UI-03 và preview tính trên tập test | Preview, UI-D1 (API-17, nhị phân) và `optimize` trên điểm chọn ngưỡng | R5 đóng |
+| M4, M5, m2 | Chọn `class_weight` không có số liệu; so chiến lược ở hai mức cân bằng khác nhau; CI bỏ phương sai huấn luyện | Lưới theo mức r (48 tổ hợp), cột Brier, CV lặp + t hiệu chỉnh, quy tắc tie-break → `src/config.py` | Mô hình cuối `xgb_none_v2`; hai khẳng định "khác biệt thật" cũ không đứng |
+| m1, m3, m4, m5 | Tài liệu nói sai về tập test; c_FN tính cả test; leakage test dễ lọt; cache theo sự tồn tại của tệp | Sửa tài liệu; c_FN = 115,94 (migration 0003); kiểm thử canary; `config_hash` cho điểm lưu, git SHA trong `metrics.json` | — |
+
+Kiểm thử: 406 xanh (gồm 93 ca cần PostgreSQL), `pytest -m perf` p95 16,8 ms.
+
+**Mang sang giai đoạn 10:** báo cáo, `SYSTEM_ARCHITECTURE.md` và docs 04–11 đã cập nhật số mới. Ảnh giao diện
+`reports/figures/10_ui_*.png` chụp lại 2026-10-11 bằng `scripts/ui/flow.js` (21/21 bước đạt) trên hệ thống đóng gói
+với `xgb_none_v2`. Hàm chi phí và ngân sách thẩm định cần nghiệp vụ xác nhận.
+
+---
+
 ## Giai đoạn 10 — Báo cáo và bảo vệ (ngày 21)
 
 - [x] **T-63** Viết `reports/bao-cao.md` theo dàn ý [docs/09 §5](docs/09-ke-hoach-trien-khai.md) — *xong là khi:* phần 6 (so sánh chiến lược) và phần 8 (ngưỡng và chi phí) là hai phần dài nhất.
 - [x] **T-64** Viết phần hạn chế — *xong là khi:* nêu đủ ba điều: V1–V28 là PCA nên không diễn giải được, dữ liệu chỉ hai ngày tháng 9/2013, và 492 mẫu dương làm khoảng tin cậy rất rộng (AC-D2).
 - [x] **T-65** Ghi nguồn dữ liệu và giấy phép DbCL v1.0 — *xong là khi:* có trích dẫn Kaggle mlg-ulb (AC-D5).
-- [ ] **T-66** Chuẩn bị kịch bản demo 10 phút — *xong là khi:* đã diễn thử một lần trọn vẹn, gồm đoạn kéo thanh trượt ngưỡng từ 0,5 về τ\* để hội đồng thấy số vụ bắt được nhảy lên trong khi chi phí giảm.
+- [ ] **T-66** Chuẩn bị kịch bản demo 10 phút — *xong là khi:* đã diễn thử một lần trọn vẹn, gồm đoạn kéo thanh trượt ngưỡng từ 0,5 về ngưỡng mặc định rồi về τ\* để hội đồng thấy số vụ bắt được nhảy lên, chi phí giảm, và số cảnh báo/ngày vượt ngân sách (sau review: ngưỡng mặc định 0,2675, τ\* 0,0191).
 - [ ] **T-67** Ôn ba câu hỏi chắc chắn bị hỏi — *xong là khi:* trả lời được trôi chảy không cần nhìn tài liệu:
   1. Vì sao PR-AUC chứ không phải ROC-AUC?
   2. SMOTE hoạt động thế nào và vì sao nó phải nằm trong pipeline?

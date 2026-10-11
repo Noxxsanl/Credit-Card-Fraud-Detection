@@ -25,6 +25,8 @@ Tài liệu này là **hợp đồng** giữa backend và frontend. Khi có tran
 | API-13 | GET | `/metrics` | Toàn bộ chỉ số đánh giá | FR-42 |
 | API-14 | GET | `/samples` | Thư viện giao dịch mẫu | FR-25 |
 | API-15 | GET | `/replay/stream` | Server-Sent Events cho phát lại | FR-43 |
+| API-16 | GET | `/monitoring` | Tỷ lệ cảnh báo, precision thẩm định, recall theo thời gian, so với kỳ vọng | [11](11-review-ml-va-ke-hoach-sua.md) M2 |
+| API-17 | GET | `/threshold/oof-scores` | Điểm chọn ngưỡng đã sắp, dạng nhị phân, cho UI-D1 | FR-31, [11](11-review-ml-va-ke-hoach-sua.md) M3 |
 
 ## 2. Kiểu dữ liệu dùng chung
 
@@ -48,16 +50,20 @@ Quy tắc suy ra `risk_band` từ `risk_score`, ngưỡng hiện hành τ và **
 | `critical` | `score ≥ B` |
 
 **τ_chặn** là ngưỡng nhỏ nhất mà **mọi** ngưỡng từ đó trở lên có precision ≥ 95% trên điểm
-out-of-fold (`BLOCK_MIN_PRECISION` trong `api/config.py`, `pick_threshold(..., "min_precision")`).
-API tính lúc nạp hiện vật; nó thuộc về mô hình, không đổi khi người dùng đặt τ. Mô hình hiện tại:
-τ_chặn ≈ 0,9735. Lấy `max(τ, τ_chặn)` để khi người dùng nâng τ vượt mức chặn thì mọi cảnh báo đều là
-`block`, không có dải `review` âm.
+chọn ngưỡng — out-of-fold forward-chaining, `oof_scores.npz` (`BLOCK_MIN_PRECISION` trong `api/config.py`,
+`pick_threshold(..., "min_precision")`). API tính lúc nạp hiện vật; nó thuộc về mô hình, không đổi khi người
+dùng đặt τ. Mô hình hiện tại (`xgb_none_v2`): τ_chặn ≈ 0,9995 — chỉ những vụ gần như chắc chắn bị đề xuất
+chặn, còn lại vào dải `review` (bản trước, `xgb_scaleposweight_v1` trên OOF ngẫu nhiên: 0,9735). Lấy
+`max(τ, τ_chặn)` để khi người dùng nâng τ vượt mức chặn thì mọi cảnh báo đều là `block`, không có dải
+`review` âm.
 
-Thiết kế cũ đặt biên ở `3τ`. Bội số 3 không dựa trên phân tích nào, và đo trên tập kiểm thử tại
-τ\* thì sai hẳn: dải `review` (τ…3τ) chứa 19 giao dịch, **không vụ gian lận nào**; dải `block` chặn
-tự động 96 giao dịch, trong đó **19 khách hợp lệ** — một nửa số cảnh báo giả. Với τ_chặn theo
-precision: `block` 70 giao dịch, 69 gian lận, 1 hợp lệ; `review` 45 giao dịch, trong đó 8 vụ gian
-lận để người thẩm định bắt (notebook 06 §6.2, `reports/block_threshold.csv`).
+Thiết kế cũ đặt biên ở `3τ`. Bội số 3 không dựa trên phân tích nào, và đo trên tập kiểm thử với mô hình
+trước thì sai hẳn: dải `review` (τ…3τ) chứa 19 giao dịch, **không vụ gian lận nào**; dải `block` chặn tự
+động 96 giao dịch, trong đó **19 khách hợp lệ** — một nửa số cảnh báo giả. Với mô hình hiện tại và ngưỡng
+mặc định 0,2675, `3τ*` = 0,0572 còn nằm dưới τ, tức mọi cảnh báo đều thành `block`. Với τ_chặn theo
+precision trên tập kiểm thử: `block` 7 giao dịch, cả 7 gian lận; `review` 68 giao dịch, 65 gian lận và 3
+hợp lệ (notebook 06 §6.2, `reports/block_threshold.csv`; mức 90% cho τ_chặn 0,6121, chặn 70 gian lận + 1
+hợp lệ).
 
 Dải rủi ro là **dẫn xuất**, tính lại mỗi lần trả kết quả — vì τ thay đổi được
 (AR-03). Không lưu vào cơ sở dữ liệu.
@@ -80,9 +86,9 @@ giải thích được vì sao một giao dịch là "đề xuất chặn".
 ```json
 {
   "status": "ok",
-  "model_version": "xgb_scaleposweight_v3",
-  "model_loaded_at": "2026-09-20T09:00:03Z",
-  "threshold": 0.0473,
+  "model_version": "xgb_none_v2",
+  "model_loaded_at": "2026-10-11T09:30:03Z",
+  "threshold": 0.2675439715385437,
   "db": "ok",
   "uptime_seconds": 1284
 }
@@ -125,10 +131,10 @@ Phản hồi `200`:
 {
   "transaction_id": "TX-8841",
   "risk_score": 0.0037,
-  "threshold": 0.0473,
+  "threshold": 0.2675439715385437,
   "decision": "allow",
   "risk_band": "low",
-  "model_version": "xgb_scaleposweight_v3",
+  "model_version": "xgb_none_v2",
   "scored_at": "2026-09-20T14:03:11Z",
   "latency_ms": 4
 }
@@ -147,7 +153,7 @@ Tối đa 50.000 phần tử (DS-15). Phản hồi:
   "batch_id": "b-2026-09-20-01",
   "count": 10000,
   "alerts": 187,
-  "threshold": 0.0473,
+  "threshold": 0.2675439715385437,
   "score_distribution": { "low": 9502, "medium": 311, "high": 151, "critical": 36 },
   "elapsed_ms": 2140,
   "results": [ { "transaction_id": "TX-1", "risk_score": 0.0012 }, ... ]
@@ -241,12 +247,12 @@ Phản hồi:
 {
   "items": [
     {
-      "id": "TX-8841", "risk_score": 0.8312, "risk_band": "critical",
+      "id": "TX-8841", "risk_score": 0.8312, "risk_band": "high",
       "amount": 149.62, "hour": 2, "true_label": 1,
       "reviewed": false, "created_at": "2026-09-20T14:03:11Z"
     }
   ],
-  "page": 1, "page_size": 50, "total": 187, "threshold": 0.0473
+  "page": 1, "page_size": 50, "total": 187, "threshold": 0.2675439715385437
 }
 ```
 
@@ -279,25 +285,32 @@ Một giao dịch chỉ có một bản ghi thẩm định; gửi lại sẽ ghi
 
 ```json
 {
-  "current": 0.0473,
-  "source": "user",
-  "cost_fn": 122.21,
-  "cost_fp": 5.00,
+  "current": 0.2675439715385437,
+  "source": "artifact",
+  "default": 0.2675439715385437,
+  "policy": "min_cost_within_budget",
+  "constraints": { "min_recall": 0.9, "alert_budget_per_day": 200.0 },
+  "cost_fn": 115.94,
+  "cost_fp": 5.0,
   "alternatives": {
-    "min_expected_cost": 0.0473,
-    "max_f1": 0.2140,
-    "recall_at_least_90": 0.0089,
-    "budget_200_alerts": 0.0612,
-    "default_naive": 0.5000
+    "min_expected_cost": 0.019058020785450935,
+    "min_cost_within_budget": 0.2675439715385437,
+    "max_f1": 0.6433648467063904,
+    "recall_at_least_90": 0.0001083674724213779,
+    "budget_200_alerts": 0.26641756296157837,
+    "default_naive": 0.5
   },
-  "model_version": "xgb_scaleposweight_v3",
-  "block_threshold": 0.9735,
-  "block_min_precision": 0.95
+  "model_version": "xgb_none_v2",
+  "block_threshold": 0.9994507431983948,
+  "block_min_precision": 0.95,
+  "selection": { "method": "temporal_forward_chaining", "n": 181584, "n_fraud": 249,
+                 "sample_fraction": 0.7999971803782523, "days": 1.447662037037037 }
 }
 ```
 
-`source` là `artifact` (giá trị mặc định từ `threshold.json`) hoặc `user` (người
-dùng đã đổi và giá trị đang nằm trong bảng `settings`). `block_threshold`: xem §2.
+Số thật của lần xuất `xgb_none_v2` (2026-10-11). `source` là `artifact` (giá trị mặc định từ
+`threshold.json`) hoặc `user` (người dùng đã đổi và giá trị đang nằm trong bảng `settings`).
+`block_threshold`: xem §2.
 
 ### API-10 — `PUT /api/v1/threshold`
 
@@ -324,9 +337,15 @@ Endpoint nóng nhất của giao diện — mỗi lần kéo thanh trượt gọ
 }
 ```
 
-Tính bằng phép so sánh vector hóa trên mảng điểm của tập kiểm thử đã nạp sẵn
-trong bộ nhớ. Không chạy mô hình, không đụng ổ đĩa — khoảng 5–10 ms, đáp ứng
-NFR-03.
+Tính bằng phép so sánh vector hóa trên mảng điểm đã nạp sẵn trong bộ nhớ. Không
+chạy mô hình, không đụng ổ đĩa — khoảng 5–10 ms, đáp ứng NFR-03.
+
+**Mảng điểm nào.** Từ review 2026-10-10 ([11](11-review-ml-va-ke-hoach-sua.md) M3), preview **ước lượng** trên **điểm chọn
+ngưỡng** (`models/oof_scores.npz` — điểm out-of-fold forward-chaining của tập huấn luyện), không
+trên tập kiểm thử: người dùng kéo thanh trượt là đang *chọn* ngưỡng, mà chọn ngưỡng bằng tập kiểm
+thử thì con số báo cáo trên tập đó không còn trung thực (ML-08). `alerts_per_day` quy đổi theo
+`sample_fraction` và `days` của bộ điểm này. Số đo trên tập kiểm thử chỉ còn ở API-13, cho ngưỡng
+đã chốt.
 
 ### API-12 — `POST /api/v1/threshold/optimize`
 
@@ -345,9 +364,16 @@ Phản hồi:
 ```json
 {
   "optimal_threshold": 0.0291,
+  "unconstrained_threshold": 0.0291,
   "constraint_binding": false,
-  "metrics_at_optimal": { ... như API-11 ... },
-  "curve": [ { "threshold": 0.001, "cost": 4210.5, "alerts": 980 }, ... ]
+  "constraint_satisfied": true,
+  "selected_on": "out_of_fold",
+  "selection_method": "temporal_forward_chaining",
+  "cost_fn": 200.0, "cost_fp": 3.0,
+  "metrics_at_optimal": { ... như API-11, trên điểm chọn ngưỡng ... },
+  "curve": [ { "threshold": 0.001, "cost": 4210.5, "alerts": 980, "alerts_per_day": 490.0,
+               "recall": 0.93, "precision": 0.05 }, ... ],
+  "curve_source": "out_of_fold"
 }
 ```
 
@@ -364,6 +390,50 @@ xuất, bảng 20 tổ hợp, tầm quan trọng SHAP toàn cục. Cấu trúc c
 [06 §3.2](06-thiet-ke-luu-tru.md).
 
 Chấp nhận `?section=pr_curve` để lấy một phần, tránh truyền tệp lớn không cần thiết.
+
+### API-16 — `GET /api/v1/monitoring?bucket_hours=24`
+
+Theo dõi ngưỡng sau khi áp dụng ([11](11-review-ml-va-ke-hoach-sua.md) M2): khi chia theo thời gian, cùng một quy trình chọn
+ngưỡng sang ngày 2 sinh gần gấp đôi số cảnh báo dự kiến. Endpoint gom bảng `transactions` của
+**mô hình đang phục vụ** theo khoảng `time_offset` rộng `bucket_hours` giờ (0 < `bucket_hours`
+≤ 48) và so với kỳ vọng ở ngưỡng hiện hành, ước lượng trên điểm chọn ngưỡng.
+
+```json
+{
+  "model_version": "…", "threshold": 0.0461, "bucket_hours": 24,
+  "transactions_per_day": 141873.0, "alert_budget_per_day": 200.0,
+  "expected": { "alert_rate": 0.0012, "alerts_per_day": 173.2, "precision": 0.71, "recall": 0.80,
+                "source": "temporal_forward_chaining" },
+  "overall": { ... như một phần tử của buckets, start_hour = null ... },
+  "buckets": [
+    { "start_hour": 24.0, "end_hour": 48.0, "n_scored": 1532, "n_alerts": 4,
+      "alert_rate": 0.0026, "alert_rate_ci": [0.0010, 0.0067], "alerts_per_day": 370.4,
+      "n_reviewed": 3, "n_confirmed": 2, "precision_reviewed": 0.67, "precision_ci": [0.21, 0.94],
+      "n_labelled_fraud": 3, "n_caught": 3, "recall_labelled": 1.0, "recall_ci": [0.44, 1.0],
+      "flags": [] }
+  ]
+}
+```
+
+Số trong ví dụ là minh họa. Mọi tỷ lệ kèm khoảng tin cậy Wilson 95%. `flags` của một khoảng:
+`alerts_above_expected` (cận **dưới** của tỷ lệ cảnh báo vượt kỳ vọng), `precision_below_expected`
+và `recall_below_expected` (cận **trên** thấp hơn kỳ vọng), `over_budget` (cận dưới quy ra mỗi ngày
+vượt `alert_budget_per_day` của `threshold.json`). Chênh lệch còn nằm trong dao động mẫu thì không
+báo. Precision lấy theo kết luận ở bảng `reviews`; recall chỉ có khi giao dịch mang nhãn thật (thư
+viện mẫu, phát lại).
+
+### API-17 — `GET /api/v1/threshold/oof-scores`
+
+Điểm chọn ngưỡng (cùng bộ với API-11, API-12) gửi cho trình duyệt để UI-D1 tính chỉ số ngay khi
+kéo thanh trượt, không gọi API-11 mỗi lần. `application/octet-stream`, kèm header
+`X-Model-Version` và `X-Selection-Method`. Định dạng little-endian: 32 byte đầu `<4sBBHIIdd` —
+chữ ký `FDSC`, phiên bản (1), độ rộng số thực (1 = float32, 2 = float64), dự phòng, **tổng số**
+giao dịch, số gian lận, `sample_fraction`, `days` — rồi **toàn bộ** điểm đã sắp tăng dần, rồi điểm
+của riêng lớp gian lận đã sắp. Với hai mảng đã sắp, đếm cảnh báo và TP ở một ngưỡng chỉ còn hai
+phép tìm nhị phân. Điểm XGBoost vốn là float32 nên gửi float32 không mất bit nào; cả tệp dưới
+1 MB, so với khoảng 5 MB nếu gửi JSON. Bản thi hành: `src/artifacts.py`
+(`sorted_scores_payload`), `web/threshold.js` và `frontend/src/lib/threshold.mjs`
+(`decodeSortedScores`, `fromSorted`); TC-12 kiểm cả đường này.
 
 ### API-14 — `GET /api/v1/samples`
 
@@ -452,8 +522,8 @@ không bao giờ để ngoại lệ chưa bắt làm sập tiến trình (AC-A10
 |---|---|
 | UI-01 Hàng đợi | API-06, API-09, API-11 |
 | UI-02 Chi tiết | API-07, API-05, API-08 |
-| UI-03 Ngưỡng | API-09, API-10, API-11, API-12 |
-| UI-04 Hiệu năng | API-13 |
+| UI-03 Ngưỡng | API-09, API-10, API-11, API-12, API-17 |
+| UI-04 Hiệu năng | API-13, API-16 |
 | Phát lại | API-15, API-09 |
 | Thư viện mẫu | API-14, API-02 |
 
@@ -485,14 +555,16 @@ là chỗ bản thi hành phải chọn một cách hiểu, hoặc phải đổi
 | API-07 | thêm `features` (30 cột thô), `decision`, `threshold`, `review`, `model_version_current` | 06 §8: gắn nhãn cảnh báo khi điểm do mô hình khác chấm |
 | API-08 | phản hồi có `true_label` và `matches_label` | Nhãn chỉ lộ **sau** khi đã quyết định (UI-02) |
 | API-05 | SHAP tính bằng `pred_contribs=True` của XGBoost (`api/serving.py`), không nạp `explainer.joblib` | Cùng thuật toán TreeSHAP, trùng **từng bit** với `explainer.joblib` (`tests/test_api.py::test_t48…`); ảnh `api` bỏ được shap + numba + llvmlite (~210 MB) |
-| §2 | `critical`/`block` từ `max(τ, τ_chặn)`, τ_chặn chọn theo precision ≥ 95% trên out-of-fold — thay cho `3τ` | Luật 3τ chặn tự động 19/38 cảnh báo giả của tập kiểm thử và để dải `review` không có vụ gian lận nào (notebook 06 §6.2) |
-| API-09 | thêm `default` (τ\* của `threshold.json`) | Nút "đặt lại" ở UI-03 |
+| §2 | `critical`/`block` từ `max(τ, τ_chặn)`, τ_chặn chọn theo precision ≥ 95% trên điểm chọn ngưỡng (out-of-fold) — thay cho `3τ` | Luật 3τ chặn tự động 19/38 cảnh báo giả của tập kiểm thử và để dải `review` không có vụ gian lận nào (notebook 06 §6.2) |
+| API-09 | thêm `default` (ngưỡng mặc định của `threshold.json`) | Nút "đặt lại" ở UI-03 |
+| API-09 | thêm `policy` (`selection_method` của `threshold.json`, mặc định `min_cost_within_budget`), `constraints` (`min_recall`, `alert_budget_per_day`) và `selection` (`method`, `n`, `n_fraud`, `sample_fraction`, `days` của điểm chọn ngưỡng) | Review 2026-10-10 ([11](11-review-ml-va-ke-hoach-sua.md) M1, M2): UI-03 điền sẵn ràng buộc ngân sách và ghi rõ các con số trên màn hình ước lượng trên bộ điểm nào |
 | API-09 | thêm `block_threshold`, `block_min_precision` | §2 |
 | API-09 | `source = "user"` chỉ khi ngưỡng trong `settings` được đặt cho **đúng** `model_version` đang chạy | Huấn luyện lại thì một con số đặt cho mô hình cũ không còn nghĩa (06 §2) |
 | API-10 | nhận thêm `cost_fn`, `cost_fp` (tùy chọn) để lưu cùng ngưỡng | Nút "áp dụng" ở UI-03 áp cả tham số chi phí |
 | API-11 | nhận thêm `cost_fn`, `cost_fp` (tùy chọn); mặc định lấy từ `settings` | |
-| API-12 | ngưỡng **chọn trên out-of-fold** (`models/oof_scores.npz`), dò trên mọi điểm khác nhau; chỉ số tại ngưỡng đo trên tập kiểm thử (`metrics_at_optimal`) và kèm số out-of-fold (`metrics_at_optimal_oof`); `curve` cũng trên out-of-fold (`curve_source`) | ML-08: đây là một phép **chọn** ngưỡng. Với chi phí mặc định API trả đúng τ\* = 0,023173 của `threshold.json` |
-| API-12 | có ràng buộc thì nghiệm là ngưỡng **chi phí thấp nhất trong vùng khả thi**; thêm `unconstrained_threshold`, `constraint_satisfied` | Khác phương án `budget_200_alerts` của `threshold.json` (τ **nhỏ nhất** trong ngân sách, tức recall cao nhất): với 200 cảnh báo/ngày, API chọn 0,9657 còn `threshold.json` ghi 0,9625 |
+| API-11 | tính trên **điểm chọn ngưỡng** (`models/oof_scores.npz`), không trên tập kiểm thử (từ 2026-10-10) | [11](11-review-ml-va-ke-hoach-sua.md) M3: kéo thanh trượt là chọn ngưỡng; chọn bằng tập kiểm thử vi phạm ML-08 |
+| API-12 | ngưỡng **chọn trên điểm chọn ngưỡng** (`models/oof_scores.npz`, forward-chaining theo `Time` — `selection_method`), dò trên mọi điểm khác nhau bằng `src.threshold.constrained_min_cost`; `metrics_at_optimal` và `curve` cũng trên bộ điểm đó (`curve_source`). Bỏ `metrics_at_optimal_oof` cũ | ML-08: đây là một phép **chọn** ngưỡng. Với chi phí mặc định và ràng buộc `max_alerts_per_day = 200`, API trả đúng ngưỡng mặc định của `threshold.json` (`tests/test_api.py`) |
+| API-12 | có ràng buộc thì nghiệm là ngưỡng **chi phí thấp nhất trong vùng khả thi**; thêm `unconstrained_threshold`, `constraint_satisfied` | Cùng định nghĩa với phương án `min_cost_within_budget` — ngưỡng mặc định — của `threshold.json`. Khác `budget_200_alerts` (τ **nhỏ nhất** trong ngân sách, tức recall cao nhất) |
 | API-12 | thân rỗng → 422 (TC-41); gửi `{}` để dùng mọi giá trị mặc định | |
 | API-13 | `?section=<khóa>` trả `{"model_version", "<khóa>": …}`; khóa không có → 400 kèm danh sách khóa | |
 | API-14 | mỗi mẫu có `category` và `features` (30 cột) | Giao diện gửi thẳng `features` vào API-02 kèm `sample_id` |
@@ -500,6 +572,7 @@ là chỗ bản thi hành phải chọn một cách hiểu, hoặc phải đổi
 | API-15 | thêm sự kiện `start` (tổng số, ngưỡng, `batch_id`) và `end`; `stats` gửi mỗi giây, cũng là nhịp "còn sống"; mỗi giao dịch có `risk_band`, `sim_seconds` | Nhãn thật **không** gửi trong luồng |
 | API-15 | mỗi giao dịch phát ra được ghi vào `transactions` (`source = "replay"`, mã `RP-<dòng>`), mẻ 100 dòng, `ON CONFLICT DO NOTHING` | Cảnh báo "rơi vào hàng đợi" (UI-05); phát lại lần hai không nhân đôi (TC-44) |
 | API-15 | điểm rủi ro do **mô hình chấm lúc giao dịch tới giờ** trên đồng hồ mô phỏng (mẻ nhỏ, tối đa 500), cùng đường với `/score` — không đọc cột `risk_score` tính sẵn của `test_set.parquet` | Phát lại là trình diễn chấm điểm thật, không phải phát lại một bảng số |
+| API-16, API-17 | endpoint mới của review 2026-10-10 | [11](11-review-ml-va-ke-hoach-sua.md) M2 (theo dõi trôi ngưỡng), M3 (UI-D1 trên điểm chọn ngưỡng) |
 
 Số đo trên máy phát triển (12 lõi, đang có tải nền khoảng 50% CPU):
 

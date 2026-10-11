@@ -190,6 +190,22 @@ Hai kịch bản Puppeteer của giai đoạn 8 nay nằm trong repo (`scripts/u
 `scripts/ui/keyboard.js` 24 bước cho AC-A9), vẫn ngoài pytest vì cần Chrome và hệ thống đang chạy.
 Kết quả trên hệ thống đóng gói: §4.4.
 
+### 2.10 Sau review ML (2026-10-11, [11](11-review-ml-va-ke-hoach-sua.md))
+
+| Tệp | Ca mới hoặc đổi |
+|---|---|
+| `tests/test_experiments.py` (mới) | lưới theo mức cân bằng `r`: `class_weight` ở mức `r` nhân trọng số lớp dương đúng `r × N_neg/N_pos`, SMOTE/undersample dùng `sampling_strategy = r`, `r` ngoài (0, 1] hoặc đi với `none` bị từ chối; cột `brier` đúng là Brier của điểm out-of-fold; dấu vân tay cấu hình tất định và đổi khi đổi tham số, dữ liệu hay CV; điểm lưu chỉ dùng lại khi dấu vân tay khớp, bản lưu cũ không có dấu vân tay thì huấn luyện lại, đổi chi phí chỉ tính lại cột ngưỡng; kiểm định t hiệu chỉnh Nadeau–Bengio đúng công thức và rộng hơn kiểm định t thường; CV lặp cho mọi cấu hình gặp cùng các fold; forward-chaining không bao giờ học tương lai, kể cả khi dòng chưa sắp theo `Time`; quy tắc chọn cấu hình (đơn giản nhất trong nhóm hoà, rồi Brier, rồi cảnh báo/ngày) |
+| `tests/test_no_leakage.py` | **canary**: xáo nhãn thì PR-AUC out-of-fold dưới 3 lần đường cơ sở với cả bốn chiến lược; đối chứng dương — SMOTE chạy **trước** CV — cho PR-AUC trên 2 lần đường cơ sở, tức bộ kiểm bắt được đúng loại rò rỉ nó canh. `test_leak_5_…` nhận thêm `policy_threshold`, `capacity_for_recall` và nhãn của điểm chọn ngưỡng |
+| `tests/test_threshold.py` | `min_cost_within_budget`: cực tiểu chi phí trong vùng cảnh báo/ngày ≤ ngân sách, trùng `constrained_min_cost`; ràng buộc không khả thi thì trả ngưỡng an toàn và báo `satisfied = false`; `capacity_for_recall` |
+| `tests/test_threshold_parity.py` | TC-12 thêm hai đường: điểm chọn ngưỡng thật (`oof_scores.npz`) qua payload nhị phân của API-17, và payload float32/float64 tổng hợp — `decodeSortedScores` + `fromSorted` của cả hai bản giao diện trùng `src/threshold.py`; màn hình Ngưỡng của cả hai bản tính trên điểm chọn ngưỡng, không trên tập kiểm thử |
+| `tests/test_artifacts.py` | `oof_scores.npz` mang `method`; payload nhị phân đọc ngược đúng; `environment.git`; thư viện mẫu bổ sung `legit_hard` bằng hợp lệ điểm cao nhất dưới ngưỡng khi cảnh báo giả ít hơn 20; T-36 kiểm khối `acceptance` thay vì ép recall ≥ 0,75 |
+| `tests/test_api.py` | không còn ghi cứng con số của một lần xuất; API-12 với chi phí và ngân sách mặc định ra đúng ngưỡng mặc định, `metrics_at_optimal` trên điểm chọn ngưỡng; API-17 trả đúng bộ điểm của `oof_scores.npz`; API-16 đếm khớp cơ sở dữ liệu và đánh dấu đúng khoảng lệch |
+| `tests/test_scoring.py` | không ghi cứng chi phí hay ngưỡng; quyết định `block` đúng `điểm ≥ max(τ, τ_chặn)` |
+
+Toàn bộ trên hiện vật `xgb_none_v2` (2026-10-11): **406 xanh**, 1 bỏ chọn (`perf`), khoảng 2 phút 45 giây; 93
+ca cần PostgreSQL (`docker compose up -d db`), thiếu thì tự bỏ qua. `pytest -m perf`: NFR-01 p95 phía máy chủ
+16,8 ms, tính cả HTTP 26,4 ms.
+
 ## 3. Kiểm chứng phương pháp
 
 Đây là phần không tự động hóa được hoàn toàn; làm theo danh sách kiểm.
@@ -201,6 +217,7 @@ Kết quả trên hệ thống đóng gói: §4.4.
 - [x] Không có `scaler.fit(X)` trên toàn bộ dữ liệu ở bất kỳ đâu. — `test_leak_3_…`, TC-21
 - [x] `StratifiedKFold` được dùng ở mọi chỗ có CV; tìm chuỗi `KFold(` không có tiền tố `Stratified`. — `test_leak_4_…`
 - [x] Ngưỡng được chọn trên dữ liệu out-of-fold hoặc tập huấn luyện, không trên tập kiểm thử (ML-08). — `test_leak_5_…`
+- [x] Bộ kiểm có bắt được rò rỉ thật không: xáo nhãn cho PR-AUC ở mức may rủi, SMOTE trước CV thì bị phát hiện. — `test_canary_…` (review 2026-10-10)
 - [x] Dòng trùng lặp bị loại trước khi chia tập. — `test_leak_2_and_6_…`, `test_leak_6_…`, TC-23
 - [x] `random_state=42` có mặt ở mọi đối tượng có tham số này. — `test_leak_7_…` (3 ca)
 
@@ -234,7 +251,7 @@ bởi một thao tác không ổn định.
 | Mã | Tiêu chí | Cách kiểm chứng | Bắt buộc |
 |---|---|---|---|
 | AC-M1 | PR-AUC trên tập kiểm thử ≥ 0,75 | `metrics.json` | Có |
-| AC-M2 | Recall ≥ 0,75 tại ngưỡng đề xuất | Ma trận nhầm lẫn | Có |
+| AC-M2 | Recall ≥ 0,75 tại **ngưỡng mặc định** — chi phí nhỏ nhất trong ngân sách 200 cảnh báo/ngày, chọn trên điểm forward-chaining. Đạt hay không tùy hàm chi phí và ngân sách: chỉ có nghĩa khi nghiệp vụ xác nhận hai giả định đó ([11](11-review-ml-va-ke-hoach-sua.md) M1) | `metrics.json → acceptance` (kèm số tại τ\* không ràng buộc và năng lực thẩm định cần cho recall 0,75) | Có |
 | AC-M3 | Đủ 20 tổ hợp mô hình × chiến lược | Bảng trong báo cáo | Có |
 | AC-M4 | Không có rò rỉ dữ liệu | Danh sách kiểm §3.1 + TC-20…TC-23 | Có |
 | AC-M5 | Tái lập: PR-AUC lệch < 0,001 giữa hai lần chạy | §3.2 | Có |
@@ -293,7 +310,7 @@ Kiểm trên **hệ thống đóng gói** — bản sao sạch của repo chạy
 - [ ] Khởi động hệ thống một lần **trước** buổi bảo vệ để volume `pgdata` đã sẵn sàng.
 - [ ] Chuẩn bị sẵn bản `pg_dump` dữ liệu demo để khôi phục nếu có sự cố: `python scripts/demo_db.py seed` rồi `dump`; khôi phục bằng `restore`, khoảng 2,5 giây ([06 §7.4](06-thiet-ke-luu-tru.md)).
 - [ ] Mở cả bốn màn hình, không có lỗi trong console trình duyệt.
-- [ ] Kịch bản trình bày ngưỡng (kéo 0,5 → τ\* = 0,0232) chạy mượt — số thật ở [lenh-chay §8.3](lenh-chay.md).
+- [ ] Kịch bản trình bày ngưỡng chạy mượt: kéo 0,5 → ngưỡng mặc định 0,2675 (thêm 1 vụ bắt được, trong ngân sách) → τ\* = 0,0191 (thêm 6 vụ nữa, nhưng vượt ngân sách) — số thật ở notebook 06 §3; số đo giao diện cũ ở [lenh-chay §8.3](lenh-chay.md).
 - [ ] Chuẩn bị sẵn 4 giao dịch mẫu: gian lận dễ, gian lận khó, hợp lệ dễ, hợp lệ khó.
 - [ ] Có phương án dự phòng khi mạng hoặc máy chiếu hỏng: ảnh chụp màn hình và bản PDF báo cáo.
 - [ ] Ôn ba câu hỏi chắc chắn bị hỏi:

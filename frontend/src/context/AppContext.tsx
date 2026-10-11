@@ -1,8 +1,9 @@
 "use client";
 
 /*
- * Trạng thái toàn cục (docs/07 §9): ngưỡng hiện hành và tham số chi phí, điểm của tập kiểm thử,
- * tình trạng API, thông báo nổi, và các yêu cầu mở ngăn kéo chi tiết / thư viện mẫu.
+ * Trạng thái toàn cục (docs/07 §9): ngưỡng hiện hành và tham số chi phí, hai bộ điểm (điểm chọn
+ * ngưỡng cho màn hình Ngưỡng, điểm tập kiểm thử để báo cáo — lib/scores.ts), tình trạng API, thông
+ * báo nổi, và các yêu cầu mở ngăn kéo chi tiết / thư viện mẫu.
  *
  * Nằm trong layout gốc nên sống qua mọi lần chuyển trang. Điểm của tập kiểm thử (56.746 phần tử,
  * đã sắp) nằm trong state như mọi giá trị khác: React so sánh theo tham chiếu nên kích thước mảng
@@ -11,8 +12,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { api, ApiError } from "@/lib/api";
-import { loadTestScores, metrics, type TestScores, type ThresholdMetrics } from "@/lib/scores";
+import { api, apiBinary, ApiError } from "@/lib/api";
+import { loadSelectionScores, loadTestScores, metrics, type ScoreSet, type ThresholdMetrics } from "@/lib/scores";
 import type { Dataset, ReviewDecision, ThresholdState } from "@/lib/types";
 
 export interface HealthState {
@@ -35,8 +36,12 @@ interface AppValue {
   trainedAt: string | null;
   threshold: ThresholdState | null;
   thresholdError: string | null;
-  scores: TestScores | null;
+  /** Điểm tập kiểm thử — chỉ để BÁO CÁO ngưỡng đang áp dụng */
+  scores: ScoreSet | null;
   scoresError: string | null;
+  /** Điểm chọn ngưỡng (out-of-fold theo thời gian) — mọi con số của màn hình Ngưỡng (docs/11 M3) */
+  selection: ScoreSet | null;
+  selectionError: string | null;
   /** Chỉ số của ngưỡng hiện hành trên tập kiểm thử — dòng đầu UI-01, ma trận ở UI-04 */
   summary: ThresholdMetrics | null;
   toasts: Toast[];
@@ -73,8 +78,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [trainedAt, setTrainedAt] = useState<string | null>(null);
   const [threshold, setThreshold] = useState<ThresholdState | null>(null);
   const [thresholdError, setThresholdError] = useState<string | null>(null);
-  const [scores, setScores] = useState<TestScores | null>(null);
+  const [scores, setScores] = useState<ScoreSet | null>(null);
   const [scoresError, setScoresError] = useState<string | null>(null);
+  const [selection, setSelection] = useState<ScoreSet | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [queueVersion, setQueueVersion] = useState(0);
   const [reviewed, setReviewed] = useState<Record<string, ReviewDecision>>({});
@@ -83,7 +90,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const versionRef = useRef<string | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const loaded = useRef({ threshold: false, scores: false, info: false });
+  const loaded = useRef({ threshold: false, scores: false, selection: false, info: false });
   const seq = useRef(0);
 
   const noteModel = useCallback((version: string | undefined | null) => {
@@ -119,6 +126,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const loadSelection = useCallback(() => {
+    apiBinary("/threshold/oof-scores").then(
+      (buffer) => {
+        setSelection(loadSelectionScores(buffer));
+        setSelectionError(null);
+        loaded.current.selection = true;
+      },
+      (e: Error) => setSelectionError(e.message),
+    );
+  }, []);
+
   const loadModelInfo = useCallback(() => {
     api<{ model_version: string; trained_at: string }>("/metrics?section=trained_at").then(
       (info) => {
@@ -137,6 +155,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         noteModel(h.model_version);
         if (!loaded.current.threshold) loadThreshold();
         if (!loaded.current.scores) loadScores();
+        if (!loaded.current.selection) loadSelection();
         if (!loaded.current.info) loadModelInfo();
       },
       (e: ApiError) => {
@@ -145,7 +164,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         noteModel(details.model_version);
       },
     );
-  }, [noteModel, loadThreshold, loadScores, loadModelInfo]);
+  }, [noteModel, loadThreshold, loadScores, loadSelection, loadModelInfo]);
 
   // Thăm /health lúc mở trang rồi mỗi 15 giây (API và CSDL có thể dừng giữa chừng)
   useEffect(() => {
@@ -182,9 +201,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AppValue>(() => ({
     health, modelVersion, modelChanged, trainedAt, threshold, thresholdError, scores, scoresError,
-    summary, toasts, queueVersion, reviewed, drawerRequest, samplesRequest,
+    selection, selectionError, summary, toasts, queueVersion, reviewed, drawerRequest, samplesRequest,
     checkHealth, loadScores, setThreshold, toast, openTx, takeReturnFocus, openSamples, bumpQueue, noteReview,
-  }), [health, modelVersion, modelChanged, trainedAt, threshold, thresholdError, scores, scoresError, summary, toasts,
+  }), [health, modelVersion, modelChanged, trainedAt, threshold, thresholdError, scores, scoresError, selection,
+    selectionError, summary, toasts,
     queueVersion, reviewed, drawerRequest, samplesRequest, checkHealth, loadScores, toast, openTx, takeReturnFocus,
     openSamples, bumpQueue, noteReview]);
 

@@ -93,8 +93,8 @@ Khóa trong `settings`:
 
 | Khóa | Kiểu JSON | Mặc định | Nguồn mặc định |
 |---|---|---|---|
-| `threshold` | object `{"value": number, "model_version": string}` | **không có dòng** — dùng τ\* của `threshold.json` | chỉ ghi khi người dùng gọi `PUT /threshold` |
-| `cost_fn` | number | 122.21 | migration `0002`, rồi `threshold.json` lúc khởi động |
+| `threshold` | object `{"value": number, "model_version": string}` | **không có dòng** — dùng ngưỡng mặc định của `threshold.json` | chỉ ghi khi người dùng gọi `PUT /threshold` |
+| `cost_fn` | number | 115.94 | migration `0002` (122.21), sửa thành 115.94 ở `0003` nếu chưa ai đổi; rồi `threshold.json` lúc khởi động |
 | `cost_fp` | number | 5.00 | như trên |
 | `replay_speed` | number | 60 | Hằng số |
 
@@ -269,11 +269,12 @@ api/migrations/
 ├── env.py                          # URL lấy từ DATABASE_URL (.env) hoặc do mã gọi truyền vào
 └── versions/
     ├── 0001_initial_schema.py      # ba bảng, chỉ mục, ràng buộc, dãy transaction_id_seq
-    └── 0002_seed_settings.py       # nạp cost_fn, cost_fp, replay_speed — không nạp threshold (§2)
+    ├── 0002_seed_settings.py       # nạp cost_fn, cost_fp, replay_speed — không nạp threshold (§2)
+    └── 0003_cost_fn_train_only.py  # cost_fn 122.21 → 115.94 (chỉ tập huấn luyện, [11](11-review-ml-va-ke-hoach-sua.md) m3), chỉ khi chưa đổi
 ```
 
 `alembic.ini` chỉ được chứa ký tự ASCII: Alembic đọc nó bằng bảng mã mặc định của hệ điều
-hành (cp1252 trên Windows), một chữ có dấu là sập. Hai migration viết tay, không autogenerate,
+hành (cp1252 trên Windows), một chữ có dấu là sập. Các migration viết tay, không autogenerate,
 để khớp từng ràng buộc `CHECK` và chỉ mục một phần. `tests/test_db.py` kiểm
 `upgrade head → downgrade base → upgrade head` cho lược đồ cuối giống lược đồ đầu (TC-47).
 
@@ -291,7 +292,7 @@ uvicorn. Lệnh này là idempotent — chạy lại khi lược đồ đã mớ
 Mọi tệp hiện vật do `notebooks/08_export_artifacts.ipynb` sinh ra. `src/artifacts.py` là bản thi hành
 của mục này: các hàm `*_payload` dựng nội dung, các hàm `validate_*` kiểm tra ngược lại cấu trúc.
 Notebook gọi chúng trước khi ghi, `tests/test_artifacts.py` gọi sau khi ghi, và API gọi lúc khởi
-động (T-44). Ví dụ dưới đây là **số thật** của lần xuất `xgb_scaleposweight_v1` (2026-09-27).
+động (T-44). Ví dụ dưới đây là **số thật** của lần xuất `xgb_none_v2` (2026-10-11, sau review [11](11-review-ml-va-ke-hoach-sua.md)).
 
 Quy ước chung:
 
@@ -305,26 +306,31 @@ Quy ước chung:
 
 ```json
 {
-  "default_threshold": 0.023172983899712563,
-  "selection_method": "min_expected_cost",
-  "selected_on": "out_of_fold",
-  "cost_false_negative": 122.21,
+  "default_threshold": 0.2675439715385437,
+  "selection_method": "min_cost_within_budget",
+  "selected_on": "temporal_out_of_fold",
+  "cost_false_negative": 115.94,
   "cost_false_positive": 5.0,
   "alternatives": {
-    "min_expected_cost": 0.023172983899712563,
-    "max_f1": 0.720512330532074,
-    "recall_at_least_90": 0.0005369935533963144,
-    "budget_200_alerts": 0.9624789953231812,
+    "min_expected_cost": 0.019058020785450935,
+    "min_cost_within_budget": 0.2675439715385437,
+    "max_f1": 0.6433648467063904,
+    "recall_at_least_90": 0.0001083674724213779,
+    "budget_200_alerts": 0.26641756296157837,
     "default_naive": 0.5
   },
-  "model_version": "xgb_scaleposweight_v1",
-  "trained_at": "2026-09-27T08:14:32Z",
+  "model_version": "xgb_none_v2",
+  "trained_at": "2026-10-11T10:15:56Z",
   "constraints": { "min_recall": 0.9, "alert_budget_per_day": 200.0 }
 }
 ```
 
 `default_threshold` luôn bằng `alternatives[selection_method]`. Mọi ngưỡng được chọn trên điểm
-out-of-fold của tập huấn luyện (`selected_on`, ML-08), không trên tập kiểm thử.
+out-of-fold của tập huấn luyện (ML-08), không trên tập kiểm thử. Từ review 2026-10-10 ([11](11-review-ml-va-ke-hoach-sua.md) M1, M2):
+`selection_method = min_cost_within_budget` — chi phí nhỏ nhất trong các ngưỡng có cảnh báo/ngày ≤
+`constraints.alert_budget_per_day` — và `selected_on = temporal_out_of_fold` — điểm forward-chaining theo
+`Time` (`oof_scores.npz → method`). Bản trước dùng `min_expected_cost` trên `out_of_fold` ngẫu nhiên; API vẫn
+đọc được cả hai.
 
 ### 6.2 `models/metrics.json`
 
@@ -332,48 +338,49 @@ Mười hai khóa bắt buộc, theo đúng thứ tự:
 
 ```json
 {
-  "model_version": "xgb_scaleposweight_v1",
-  "trained_at": "2026-09-27T08:14:32Z",
+  "model_version": "xgb_none_v2",
+  "trained_at": "2026-10-11T10:15:56Z",
   "dataset": {
     "n_total": 283726, "n_duplicates_removed": 1081,
     "n_train": 226980, "n_fraud_train": 378,
     "n_test": 56746,   "n_fraud_test": 95,
     "positive_rate": 0.001674, "test_fraction": 0.2000, "days": 2.0,
     "split": "phân tầng 80/20 theo Class, random_state=42, sau khi loại trùng lặp",
+    "selection": "điểm chọn ngưỡng forward-chaining theo Time trên tập huấn luyện",
     "test_scores_order": "dòng của data/test_set.parquet (Time tăng dần)"
   },
   "headline": {
-    "pr_auc":    { "value": 0.8252, "ci_low": 0.7470, "ci_high": 0.8960 },
-    "roc_auc":   { "value": 0.9773, "ci_low": 0.9609, "ci_high": 0.9912 },
-    "recall":    { "value": 0.8105, "ci_low": 0.7368, "ci_high": 0.8842 },
-    "precision": { "value": 0.6696, "ci_low": 0.6000, "ci_high": 0.7522 },
-    "f1":        { "value": 0.7333 },
+    "pr_auc":    { "value": 0.8279, "ci_low": 0.7472, "ci_high": 0.8996 },
+    "roc_auc":   { "value": 0.9752, "ci_low": 0.9576, "ci_high": 0.9909 },
+    "recall":    { "value": 0.7579, "ci_low": 0.6737, "ci_high": 0.8421 },
+    "precision": { "value": 0.9600, "ci_low": 0.9146, "ci_high": 1.0000 },
+    "f1":        { "value": 0.8471 },
     "baseline_pr_auc": 0.001674,
     "n_boot": 1000
   },
-  "confusion_at_default": { "threshold": 0.023173, "tp": 77, "fp": 38, "fn": 18, "tn": 56613 },
+  "confusion_at_default": { "threshold": 0.267544, "tp": 72, "fp": 3, "fn": 23, "tn": 56648 },
   "pr_curve":   { "recall": [], "precision": [], "thresholds": [] },
   "roc_curve":  { "fpr": [], "tpr": [] },
-  "cost_curve": [ { "threshold": 1.67e-08, "cost": 283255.0, "alerts": 56746, "alerts_per_day": 141863.0,
+  "cost_curve": [ { "threshold": 1.99e-08, "cost": 283255.0, "alerts": 56746, "alerts_per_day": 141863.0,
                     "tp": 95, "fp": 56651, "fn": 0, "precision": 0.0017, "recall": 1.0 } ],
   "test_scores": { "y_true": [], "y_score": [] },
   "grid_results": [
     { "model": "xgboost", "strategy": "class_weight",
-      "pr_auc_mean": 0.8549, "pr_auc_std": 0.0301, "roc_auc": 0.9824, "roc_auc_std": 0.0081,
+      "pr_auc_mean": 0.8549, "pr_auc_std": 0.0301, "roc_auc": 0.9824, "brier": 0.000408,
       "threshold": 0.0232, "recall": 0.852, "precision": 0.702, "f1": 0.769,
-      "tp": 322, "fp": 137, "fn": 56, "alerts_per_day": 286.9, "expected_cost": 7528.76,
-      "n_distinct_scores": 221674, "seconds_per_fold": 7.2, "fit_seconds": 36.1 }
+      "tp": 322, "fp": 137, "fn": 56, "alerts_per_day": 286.9, "expected_cost": 7177.64,
+      "n_distinct_scores": 221674, "config_hash": "dd098550b8c63850" }
   ],
   "shap_global": [
-    { "feature": "V14", "mean_abs_shap": 2.679, "share": 0.158, "rank_shap": 1,
-      "mean_abs_shap_fraud": 3.620, "mean_shap_fraud": 2.776,
-      "rank_cohens_d": 2, "rank_cliffs_delta": 1, "rank_pearson": 2,
-      "abs_cohens_d": 7.52, "abs_cliffs_delta": 0.894, "lr_std_coef": -1.49, "rank_lr": 3 }
+    { "feature": "V4", "mean_abs_shap": 1.391, "share": 0.147, "rank_shap": 1,
+      "mean_abs_shap_fraud": 1.218, "mean_shap_fraud": 0.964,
+      "rank_cohens_d": 9.0, "rank_cliffs_delta": 2.0, "rank_pearson": 9.0,
+      "abs_cohens_d": 3.20, "abs_cliffs_delta": 0.873, "lr_std_coef": 1.20, "rank_lr": 6 }
   ],
   "split_comparison": {
-    "random_stratified":     { "pr_auc": 0.8252, "pr_auc_ci_low": 0.7470, "pr_auc_ci_high": 0.8960, "fp": 38 },
-    "random_downsized_day1": { "pr_auc": 0.8249, "fp": 16 },
-    "temporal":              { "pr_auc": 0.7816, "pr_auc_ci_low": 0.7280, "pr_auc_ci_high": 0.8359, "fp": 338 }
+    "random_stratified":     { "pr_auc": 0.8279, "pr_auc_ci_low": 0.7472, "pr_auc_ci_high": 0.8996, "fp": 12 },
+    "random_downsized_day1": { "pr_auc": 0.8167, "fp": 15 },
+    "temporal":              { "pr_auc": 0.7733, "pr_auc_ci_low": 0.7237, "pr_auc_ci_high": 0.8265, "fp": 291 }
   }
 }
 ```
@@ -398,22 +405,25 @@ Ghi chú về từng khóa:
   `RobustScaler`.
 - `split_comparison` — ba cách chia của T-27, gồm dòng đối chứng `random_downsized_day1`.
 
-Sáu khóa bổ sung, đứng sau các khóa bắt buộc, phục vụ UI-04 ([07 §6](07-thiet-ke-giao-dien.md)) và
+Các khóa bổ sung, đứng sau các khóa bắt buộc, phục vụ UI-04 ([07 §6](07-thiet-ke-giao-dien.md)) và
 tầng API:
 
 | Khóa | Nội dung | Phục vụ |
 |---|---|---|
 | `strategy_pr_curves` | `{model, evaluated_on: "out_of_fold", baseline, curves: [{strategy, pr_auc_mean, pr_auc_std, recall[], precision[], thresholds[]}]}` — XGBoost dưới 5 chiến lược, 300 điểm mỗi đường. `null` nếu thiếu `reports/grid_results.npz` | UI-04 mục 2 |
 | `baseline_comparison` | accuracy, PR-AUC kèm KTC, ROC-AUC, TP/FP/FN/TN của mô hình rỗng, hồi quy logistic, cây quyết định và mô hình xuất | UI-04 mục 4, G-2 |
-| `threshold_options` | 5 phương án của `threshold.json` đo trên tập kiểm thử: TP/FP/FN/TN, precision, recall, chi phí, cảnh báo/ngày | UI-03, bảng T-30 |
+| `threshold_options` | mọi phương án của `threshold.json` đo trên tập kiểm thử: TP/FP/FN/TN, precision, recall, chi phí, cảnh báo/ngày | UI-03, bảng T-30 |
 | `training` | tham số XGBoost, thời gian huấn luyện, `feature_order` (31 cột vào pipeline), `model_feature_names` (thứ tự sau tiền xử lý — tên gán cho giá trị SHAP), `shap_base_value`, `shap_output: "log-odds"` | API `/explain` |
-| `fingerprint` | `test_scores_sha256`, `oof_scores_sha256` — 16 ký tự đầu SHA-256 của mảng điểm | T-38: hai lần chạy cùng dấu vân tay nghĩa là điểm trùng từng bit |
-| `environment` | phiên bản Python, `numpy`, `pandas`, `scikit-learn`, `imbalanced-learn`, `xgboost`, `shap`, `joblib`; số lõi CPU | nạp `.joblib` trên máy khác; XGBoost lệch nhẹ theo số luồng |
+| `selection` | `method` (`temporal_forward_chaining`), `n`, `n_fraud`, `sample_fraction`, `days` của điểm chọn ngưỡng, và từng fold forward-chaining (khoảng `Time` huấn luyện/kiểm định, số dòng, số gian lận) | [11](11-review-ml-va-ke-hoach-sua.md) M2 |
+| `acceptance` | `ac_m1`, `ac_m2` (tại ngưỡng mặc định, kèm KTC, cảnh báo/ngày, ngân sách, `passed`), `ac_m2_unconstrained` (tại τ\* tự do, tham khảo), `capacity_for_recall_075` — ghi đúng như đo, không chặn xuất | [11](11-review-ml-va-ke-hoach-sua.md) M1 |
+| `fingerprint` | `test_scores_sha256`, `oof_scores_sha256` — 16 ký tự đầu SHA-256 của mảng điểm (`oof_scores_sha256` là của điểm chọn ngưỡng) | T-38: hai lần chạy cùng dấu vân tay nghĩa là điểm trùng từng bit |
+| `environment` | phiên bản Python, `numpy`, `pandas`, `scikit-learn`, `imbalanced-learn`, `xgboost`, `shap`, `joblib`; số lõi CPU; `git` (`commit`, `dirty`) | nạp `.joblib` trên máy khác; XGBoost lệch nhẹ theo số luồng; biết hiện vật xuất từ mã nào |
 
-Trường `test_scores` là thứ làm API-11 và UI-D1 nhanh: hai mảng 56.746 phần tử **theo thứ tự dòng
-của `data/test_set.parquet`**, nạp một lần vào bộ nhớ lúc khởi động. `y_score` giữ nguyên độ chính
-xác float64: UI-D1 so từng điểm với ngưỡng ngay trong trình duyệt, làm tròn là lệch TP/FP/FN ở sát
-ngưỡng (TC-12). Chúng **không** nằm trong cơ sở dữ liệu — đây là dữ liệu của mô hình, không phải
+Trường `test_scores` là hai mảng 56.746 phần tử **theo thứ tự dòng của `data/test_set.parquet`**, nạp
+một lần vào bộ nhớ lúc khởi động; `y_score` giữ nguyên độ chính xác float64 — làm tròn là lệch TP/FP/FN ở
+sát ngưỡng (TC-12). Từ review 2026-10-10, nó chỉ phục vụ các màn hình **báo cáo** (dòng tóm tắt của UI-01,
+dòng chỉ đọc ở UI-03, UI-04); API-11 và thanh trượt UI-D1 tính trên điểm chọn ngưỡng (`oof_scores.npz`,
+gửi qua API-17). Chúng **không** nằm trong cơ sở dữ liệu — đây là dữ liệu của mô hình, không phải
 trạng thái ứng dụng (AR-01).
 
 Kích thước đo được: **1,6 MB**, trong đó `test_scores` chiếm 1,46 MB. Còn xa mức cần tách
@@ -423,23 +433,23 @@ Kích thước đo được: **1,6 MB**, trong đó `test_scores` chiếm 1,46 M
 
 ```json
 {
-  "generated_at": "2026-09-27T08:14:32Z",
-  "model_version": "xgb_scaleposweight_v1",
-  "reference_threshold": 0.023172983899712563,
+  "generated_at": "2026-10-11T10:15:56Z",
+  "model_version": "xgb_none_v2",
+  "reference_threshold": 0.2675439715385437,
   "fraud_hard_cutoff": 0.5,
   "source": "data/test_set.parquet",
   "categories": {
-    "fraud_easy": { "count": 29,  "rule": "gian lận, điểm ≥ 0,5" },
-    "fraud_hard": { "count": 21,  "rule": "gian lận, điểm < 0,5 (ngưỡng mặc định bỏ lọt)" },
-    "legit_easy": { "count": 112, "rule": "hợp lệ, điểm < τ* = 0,02317" },
-    "legit_hard": { "count": 38,  "rule": "hợp lệ, điểm ≥ τ* = 0,02317 (cảnh báo giả)" }
+    "fraud_easy": { "count": 26,  "rule": "gian lận, điểm ≥ 0,5" },
+    "fraud_hard": { "count": 24,  "rule": "gian lận, điểm < 0,5 (ngưỡng 0,5 bỏ lọt)" },
+    "legit_easy": { "count": 130, "rule": "hợp lệ, điểm < ngưỡng mặc định = 0,26754" },
+    "legit_hard": { "count": 20,  "rule": "hợp lệ có điểm cao nhất: mọi cảnh báo giả ở ngưỡng mặc định = 0,26754, bổ sung các giao dịch sát dưới ngưỡng cho đủ 20" }
   },
   "items": [
     {
       "id": "S-001",
       "category": "fraud_easy",
       "label": 1,
-      "risk_score": 0.9999994039535522,
+      "risk_score": 0.9998168349266052,
       "description": "Gian lận điển hình — điểm rủi ro rất cao",
       "test_row": 44742,
       "features": { "Time": 143456.0, "V1": -2.0066, "…": "…", "Amount": 1.0 }
@@ -452,24 +462,26 @@ Kích thước đo được: **1,6 MB**, trong đó `test_scores` chiếm 1,46 M
   đẹp một cách giả tạo. `test_row` là vị trí dòng trong `test_set.parquet`.
 - `features` có đúng 30 cột thô theo thứ tự `Time, V1…V28, Amount` — đầu vào của `POST /score`.
   Chấm lại các cột này bằng `model.joblib` ra đúng `risk_score` đã lưu.
-- **Luật chia nhóm**: `fraud_hard` là gian lận có điểm dưới 0,5 (mô hình không tự tin, ngưỡng mặc
-  định bỏ lọt); `legit_hard` là hợp lệ có điểm từ τ\* trở lên (cảnh báo giả ở chính sách đang chạy).
-  Hai nhóm dùng hai mốc khác nhau vì chúng khó theo hai nghĩa khác nhau. Dùng τ\* cho cả hai thì
-  `fraud_hard` chỉ còn 18 mẫu.
+- **Luật chia nhóm**: `fraud_hard` là gian lận có điểm dưới 0,5 (mô hình không tự tin, ngưỡng 0,5 bỏ
+  lọt); `legit_hard` là các giao dịch hợp lệ điểm cao nhất — mọi cảnh báo giả ở ngưỡng mặc định, và nếu
+  chúng ít hơn 20 thì bổ sung các giao dịch hợp lệ điểm cao nhất ngay dưới ngưỡng (sẽ thành cảnh báo giả nếu
+  hạ ngưỡng). Hai nhóm dùng hai mốc khác nhau vì chúng khó theo hai nghĩa khác nhau. Lần xuất `xgb_none_v2`:
+  ngưỡng mặc định 0,2675 chỉ để lại 3 cảnh báo giả trên tập kiểm thử, nên `legit_hard` gồm 3 cảnh báo giả và
+  17 giao dịch sát dưới ngưỡng.
 - Mỗi nhóm lấy **trải đều theo thứ hạng điểm**, không ngẫu nhiên: chạy lại cho đúng cùng thư viện.
   `legit_hard` lấy tối đa 40, hai nhóm "easy" lấp cho đủ 50 gian lận và 150 hợp lệ.
 - `description` và `rule` viết số theo tiếng Việt (dấu phẩy thập phân), vì giao diện hiện nguyên văn.
-- Mỗi nhóm "hard" phải có ít nhất 20 mẫu (T-37). Lần xuất này `fraud_hard` có 21 — tức **toàn bộ**
-  gian lận dưới 0,5 của tập kiểm thử, biên rất mỏng. `validate_sample_pool` chặn việc xuất nếu một
-  lần huấn luyện lại làm nhóm này tụt dưới 20.
+- Mỗi nhóm "hard" phải có ít nhất 20 mẫu (T-37). Lần xuất này `fraud_hard` có 24 — tức **toàn bộ**
+  gian lận dưới 0,5 của tập kiểm thử (bản trước: 21). `validate_sample_pool` chặn việc xuất nếu một lần
+  huấn luyện lại làm nhóm này tụt dưới 20.
 
 ### 6.4 `models/model.joblib`, `models/explainer.joblib`, `models/oof_scores.npz`, `data/test_set.parquet`
 
 | Tệp | Nội dung | Cách dùng |
 |---|---|---|
-| `model.joblib` (1,2 MB) | `imblearn.pipeline.Pipeline` hai bước: `preprocess` (`ColumnTransformer`, `RobustScaler` cho `Amount`) → `clf` (`XGBClassifier`) | `model.predict_proba(build_features(df))[:, 1]`. `feature_names_in_` bằng `FEATURE_ORDER` |
-| `explainer.joblib` (4,2 MB) | `shap.TreeExplainer` của **riêng** bước `clf` | đầu vào là `model[:-1].transform(build_features(df))`, **không** phải `build_features(df)`. Giá trị SHAP ở thang log-odds; `expected_value + Σ SHAP` bằng margin của booster. Notebook 07/08 và kiểm thử dùng; **API không nạp** từ 2026-10-09 — nó tính SHAP bằng `pred_contribs` của XGBoost, trùng từng bit với tệp này (`api/serving.py`) |
-| `oof_scores.npz` (0,8 MB) | `y_true` (int8), `y_score` (float32, giữ nguyên kiểu của `predict_proba`), `train_fraction`, `days` — 226.980 điểm out-of-fold của tập huấn luyện | `POST /threshold/optimize` chọn ngưỡng trên đây (ML-08); với chi phí mặc định ra đúng τ\*. Dấu vân tay khớp `metrics.json → fingerprint.oof_scores_sha256` (thêm ở giai đoạn 7) |
+| `model.joblib` (0,9 MB) | `imblearn.pipeline.Pipeline` hai bước: `preprocess` (`ColumnTransformer`, `RobustScaler` cho `Amount`) → `clf` (`XGBClassifier`, cấu hình `FINAL_*` của `src/config.py`; nếu cấu hình có lấy mẫu lại thì thêm bước `resample` ở giữa, chỉ chạy lúc fit) | `model.predict_proba(build_features(df))[:, 1]`. `feature_names_in_` bằng `FEATURE_ORDER` |
+| `explainer.joblib` (3,2 MB) | `shap.TreeExplainer` của **riêng** bước `clf` | đầu vào là `model[:-1].transform(build_features(df))`, **không** phải `build_features(df)`. Giá trị SHAP ở thang log-odds; `expected_value + Σ SHAP` bằng margin của booster. Notebook 07/08 và kiểm thử dùng; **API không nạp** từ 2026-10-09 — nó tính SHAP bằng `pred_contribs` của XGBoost, trùng từng bit với tệp này (`api/serving.py`) |
+| `oof_scores.npz` (0,6 MB) | **điểm chọn ngưỡng**: `y_true` (int8), `y_score` (float32, giữ nguyên kiểu của `predict_proba`), `train_fraction`, `days`, `method` (`temporal_forward_chaining`; tệp cũ không có khóa này đọc là `random_cv`) — 181.584 điểm forward-chaining của tập huấn luyện | API-11 (preview), API-12 (`optimize`) và API-17 (gửi cho thanh trượt UI-D1) tính trên đây (ML-08, [11](11-review-ml-va-ke-hoach-sua.md) M3); `optimize` với chi phí và ngân sách mặc định ra đúng ngưỡng mặc định; τ_chặn tính lúc khởi động từ đây. Dấu vân tay khớp `metrics.json → fingerprint.oof_scores_sha256` |
 | `test_set.parquet` (15,9 MB) | 32 cột: 30 cột thô, `Class`, `risk_score` (do notebook 08 thêm) | phát lại (UI-05) theo thứ tự `Time` — điểm do mô hình chấm lại lúc phát; `risk_score` trùng từng bit với `metrics.json → test_scores.y_score`, API dùng nó để kiểm mô hình lúc khởi động |
 
 Hai tệp `.joblib` là pickle: nạp được khi phiên bản `scikit-learn`, `imbalanced-learn`, `xgboost`,

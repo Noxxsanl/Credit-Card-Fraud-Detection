@@ -26,6 +26,7 @@ from .config import (
 #: Các tiêu chí chọn ngưỡng được hỗ trợ (04 §6.3)
 CRITERIA = (
     "min_expected_cost",
+    "min_cost_within_budget",
     "max_f1",
     "min_recall",
     "min_precision",
@@ -280,6 +281,72 @@ def cost_curve(
     return table
 
 
+def constrained_min_cost(table: pd.DataFrame, constraint_type: str, value: float | None) -> tuple[float, bool]:
+    """Ngưỡng cực tiểu ``expected_cost`` trong vùng thoả một ràng buộc vận hành, trên bảng ``cost_curve``.
+
+    Dùng chung cho ``pick_threshold("min_cost_within_budget")`` (notebook 08 chọn ngưỡng mặc định)
+    và ``POST /threshold/optimize`` của API — cùng một hàm thì API chắc chắn tìm lại đúng ngưỡng
+    mặc định trong ``threshold.json``.
+
+    ``constraint_type``: ``"none"``, ``"max_alerts_per_day"`` (cảnh báo/ngày ``≤ value``) hoặc
+    ``"min_recall"`` (recall ``≥ value``). Trả ``(ngưỡng, thoả_được)``; không ngưỡng nào thoả thì
+    lấy ngưỡng gần thoả nhất — ít cảnh báo nhất, hoặc recall cao nhất.
+    """
+    if constraint_type == "none":
+        return float(table.loc[table["expected_cost"].idxmin(), "threshold"]), True
+    if constraint_type == "max_alerts_per_day":
+        feasible = table[table["alerts_per_day"] <= value]
+        fallback = float(table["threshold"].max())
+    elif constraint_type == "min_recall":
+        feasible = table[table["recall"] >= value]
+        fallback = float(table["threshold"].min())
+    else:
+        raise ValueError(f"Ràng buộc không hỗ trợ: {constraint_type!r}")
+    if feasible.empty:
+        return fallback, False
+    return float(feasible.loc[feasible["expected_cost"].idxmin(), "threshold"]), True
+
+
+def policy_threshold(
+    y_true,
+    y_scores,
+    *,
+    cost_fn: float = DEFAULT_COST_FN,
+    cost_fp: float = DEFAULT_COST_FP,
+    alert_budget: float,
+    sample_fraction: float,
+    days: float,
+) -> float:
+    """Ngưỡng mặc định của hệ thống (docs/11 M1): cực tiểu chi phí trong ngân sách thẩm định, dò trên
+    MỌI điểm khác nhau của bộ điểm chọn ngưỡng — đúng phép tính mà ``POST /threshold/optimize`` làm
+    với cùng tham số, nên API tìm lại được đúng con số trong ``threshold.json``."""
+    return pick_threshold(y_true, y_scores, "min_cost_within_budget", value=alert_budget, cost_fn=cost_fn,
+                          cost_fp=cost_fp, thresholds=np.unique(y_scores), sample_fraction=sample_fraction,
+                          days=days)
+
+
+def capacity_for_recall(
+    y_true,
+    y_scores,
+    recall: float,
+    *,
+    thresholds=None,
+    sample_fraction: float = TEST_SIZE,
+    days: float = DATASET_DAYS,
+) -> dict[str, float]:
+    """Năng lực thẩm định cần có để đạt một mức recall: số cảnh báo mỗi ngày tại ngưỡng LỚN NHẤT
+    còn giữ ``recall`` (docs/11 M1).
+
+    Trả lời câu hỏi ngược với ngân sách: với 200 cảnh báo/ngày thì recall được bao nhiêu, còn muốn
+    recall 0,75 thì phải thẩm định bao nhiêu giao dịch mỗi ngày.
+    """
+    tau = pick_threshold(y_true, y_scores, "min_recall", value=recall, thresholds=thresholds,
+                         sample_fraction=sample_fraction, days=days)
+    met = metrics_at_threshold(y_true, y_scores, tau, sample_fraction=sample_fraction, days=days)
+    return {"threshold": tau, "recall": met.recall, "alerts_per_day": met.alerts_per_day,
+            "precision": met.precision, "tp": met.tp, "fp": met.fp}
+
+
 def pick_threshold(
     y_true,
     y_scores,
@@ -305,7 +372,13 @@ def pick_threshold(
     --------
     ``min_expected_cost``
         Cực tiểu ``cost_fn × FN + cost_fp × FP`` (hoặc tổng ``fn_costs`` của các vụ bỏ
-        lọt nếu truyền chi phí theo từng giao dịch). Mặc định của hệ thống.
+        lọt nếu truyền chi phí theo từng giao dịch), không ràng buộc.
+    ``min_cost_within_budget``
+        Cực tiểu chi phí như trên, nhưng chỉ trong các ngưỡng có số cảnh báo mỗi ngày
+        ``≤ value`` (ngân sách thẩm định). Không ngưỡng nào đạt thì trả ngưỡng ít cảnh báo
+        nhất. Chính sách ngưỡng mặc định từ review 2026-10-10 (docs/11 M1): τ* tự do sinh
+        nhiều cảnh báo hơn năng lực thẩm định, và trong đáy chi phí phẳng thì nên chọn theo
+        năng lực đó.
     ``max_f1``
         Cực đại F1. Dùng khi không ước lượng được chi phí.
     ``min_recall``
@@ -352,6 +425,9 @@ def pick_threshold(
     if value is None:
         raise ValueError(f"Tiêu chí {criterion!r} cần tham số `value`.")
 
+    if criterion == "min_cost_within_budget":
+        return constrained_min_cost(table, "max_alerts_per_day", value)[0]
+
     if criterion == "min_recall":
         feasible = table[table["recall"] >= value]
         if feasible.empty:
@@ -388,7 +464,11 @@ def threshold_alternatives(
     sample_fraction: float = TEST_SIZE,
     days: float = DATASET_DAYS,
 ) -> dict[str, float]:
-    """Bốn phương án ngưỡng trình bày cạnh nhau ở màn hình UI-03 (FR-34)."""
+    """Các phương án ngưỡng trình bày cạnh nhau ở màn hình UI-03 (FR-34).
+
+    ``min_cost_within_budget`` — cực tiểu chi phí trong ngân sách ``alert_budget`` cảnh báo/ngày —
+    là phương án mặc định từ review 2026-10-10 (docs/11 M1).
+    """
     kwargs = dict(
         cost_fn=cost_fn,
         cost_fp=cost_fp,
@@ -399,6 +479,9 @@ def threshold_alternatives(
     )
     return {
         "min_expected_cost": pick_threshold(y_true, y_scores, "min_expected_cost", **kwargs),
+        "min_cost_within_budget": pick_threshold(
+            y_true, y_scores, "min_cost_within_budget", value=alert_budget, **kwargs
+        ),
         "max_f1": pick_threshold(y_true, y_scores, "max_f1", **kwargs),
         f"recall_at_least_{int(min_recall * 100)}": pick_threshold(
             y_true, y_scores, "min_recall", value=min_recall, **kwargs

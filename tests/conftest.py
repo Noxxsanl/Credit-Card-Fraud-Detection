@@ -98,8 +98,8 @@ def engine(database_url):
     eng.dispose()
 
 
-#: Trạng thái bảng settings ngay sau migration 0002 — mỗi ca bắt đầu từ đây
-SETTINGS_DEFAULTS = {"cost_fn": "122.21", "cost_fp": "5.0", "replay_speed": "60"}
+#: Trạng thái bảng settings ngay sau migration 0003 — mỗi ca bắt đầu từ đây
+SETTINGS_DEFAULTS = {"cost_fn": "115.94", "cost_fp": "5.0", "replay_speed": "60"}
 
 
 def truncate(eng) -> None:

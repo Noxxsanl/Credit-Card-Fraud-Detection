@@ -5,9 +5,10 @@
     python scripts/run_search.py --status      # xem kết quả đã lưu
 
 Kết quả ghi vào ``reports/search_results.csv`` (đủ 30 dòng, sắp theo PR-AUC) và
-``reports/best_params.json``. Chạy xong rồi mở
-``notebooks/05_advanced_models.ipynb`` và Run All: notebook thấy tệp kết quả nên
-bỏ qua bước tìm kiếm.
+``reports/best_params.json``, kèm ``config_hash`` — dấu vân tay của cấu hình, miền tìm kiếm, cách chia
+fold và dữ liệu (``src.modeling.search_fingerprint``). Chạy xong rồi mở
+``notebooks/05_advanced_models.ipynb`` và Run All: notebook chỉ bỏ qua bước tìm kiếm khi dấu vân tay
+trong ``best_params.json`` khớp với cấu hình hiện tại (docs/11 m5).
 
 Tham số truyền cho ``run_search`` ở đây PHẢI trùng với ô ở mục 1 của notebook.
 """
@@ -38,6 +39,7 @@ from src.modeling import (  # noqa: E402
     imbalance_ratio,
     make_cv,
     run_search,
+    search_fingerprint,
     search_table,
 )
 
@@ -92,11 +94,14 @@ def main(argv=None) -> int:
     print(f"RandomizedSearchCV: {n_iter} lần thử × 5 fold = {n_iter * 5} lần huấn luyện")
     print("-" * 78)
 
+    cv = make_cv(random_state=RANDOM_STATE)
+    dau_van_tay = search_fingerprint(X_train, y_train, n_iter=n_iter, cv=cv, random_state=RANDOM_STATE)
+    print(f"Dấu vân tay cấu hình: {dau_van_tay}")
     bat_dau = time.perf_counter()
     search = run_search(
         X_train, y_train,
         n_iter=n_iter,
-        cv=make_cv(random_state=RANDOM_STATE),
+        cv=cv,
         refit=False,          # notebook tự huấn luyện lại cấu hình thắng (T-25)
         random_state=RANDOM_STATE,
         verbose=1,
@@ -107,7 +112,7 @@ def main(argv=None) -> int:
     bang.to_csv(duong_dan, index=False, encoding="utf-8")
 
     tham_so = best_params_from(bang)
-    duong_dan_tham_so.write_text(json.dumps({
+    duong_dan_tham_so.write_bytes(json.dumps({
         "model": "xgboost",
         "strategy": "class_weight",
         "params": tham_so,
@@ -116,7 +121,8 @@ def main(argv=None) -> int:
         "n_iter": n_iter,
         "search_minutes": round(troi / 60, 2),
         "random_state": RANDOM_STATE,
-    }, indent=2, ensure_ascii=False), encoding="utf-8")
+        "config_hash": dau_van_tay,
+    }, indent=2, ensure_ascii=False).encode("utf-8"))
 
     print("-" * 78)
     print(f"Xong {len(bang)} lần thử trong {troi / 60:.1f} phút.")

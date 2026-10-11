@@ -101,6 +101,18 @@ def evaluate_model(
     return metrics
 
 
+def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    """Khoảng tin cậy Wilson cho tỷ lệ ``k/n`` — dùng được cả khi ``k`` rất nhỏ hoặc bằng 0, khác công
+    thức Wald thông thường. ``n = 0`` thì trả cả khoảng [0, 1]."""
+    if n <= 0:
+        return 0.0, 1.0
+    p = k / n
+    denominator = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denominator
+    half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator
+    return float(max(0.0, centre - half)), float(min(1.0, centre + half))
+
+
 def bootstrap_ci(
     y_true,
     y_scores,
@@ -214,6 +226,71 @@ def bootstrap_diff(
         "contains_zero": bool(lo <= 0 <= hi),
         "n_boot": n_boot,
     }
+
+
+def corrected_resampled_ttest(
+    diffs,
+    *,
+    n_train: int,
+    n_test: int,
+    alpha: float = 0.05,
+) -> dict[str, float]:
+    """Kiểm định t có hiệu chỉnh cho hiệu chỉ số trên các fold của CV lặp (Nadeau & Bengio, 2003).
+
+    Các fold của cross-validation dùng chung dữ liệu huấn luyện nên hiệu giữa hai cấu hình trên các
+    fold tương quan dương; t-test thường coi chúng độc lập và cho khoảng tin cậy quá hẹp. Phương
+    sai được nhân thêm hệ số ``1/k + n_test/n_train`` (k là số fold × số lần lặp) — với CV 5 fold là
+    ``1/k + 1/4``. Bootstrap trên điểm OOF gộp còn hẹp hơn nữa vì bỏ hẳn phương sai do huấn luyện
+    (docs/11 m2).
+
+    ``diffs`` là hiệu ``A − B`` trên từng fold, A và B chạy trên CÙNG các fold. Khoảng tin cậy chứa 0
+    thì không được kết luận bên nào hơn.
+    """
+    from scipy import stats
+
+    d = np.asarray(diffs, dtype="float64").ravel()
+    k = d.size
+    if k < 2:
+        raise ValueError("Cần ít nhất 2 fold để ước lượng phương sai.")
+    mean = float(d.mean())
+    variance = float(d.var(ddof=1))
+    se = float(np.sqrt((1.0 / k + n_test / n_train) * variance))
+    df = k - 1
+    if se > 0:
+        t_value = mean / se
+        p_value = float(2 * stats.t.sf(abs(t_value), df))
+    else:
+        t_value = 0.0 if mean == 0 else float(np.sign(mean) * np.inf)
+        p_value = 1.0 if mean == 0 else 0.0
+    half = float(stats.t.ppf(1 - alpha / 2, df) * se)
+    return {
+        "mean_diff": mean,
+        "se": se,
+        "t": float(t_value),
+        "df": df,
+        "p_value": p_value,
+        "ci_low": mean - half,
+        "ci_high": mean + half,
+        "contains_zero": bool(mean - half <= 0 <= mean + half),
+        "n_folds": k,
+        "a_wins": float(np.mean(d > 0)),
+    }
+
+
+def compare_repeated_cv(scores_a, scores_b, *, metric: str = "pr_auc", alpha: float = 0.05) -> dict[str, float]:
+    """So hai bảng của ``modeling.repeated_cv_scores`` theo cặp trên các khoá ``(repeat, fold)`` chung."""
+    a = pd.DataFrame(scores_a).set_index(["repeat", "fold"])
+    b = pd.DataFrame(scores_b).set_index(["repeat", "fold"])
+    common = a.index.intersection(b.index)
+    if common.empty:
+        raise ValueError("Hai bảng không có fold chung — có chạy cùng random_state không?")
+    diffs = a.loc[common, metric].to_numpy() - b.loc[common, metric].to_numpy()
+    n_train = int(a.loc[common, "n_train"].iloc[0])
+    n_test = int(a.loc[common, "n_test"].iloc[0])
+    out = corrected_resampled_ttest(diffs, n_train=n_train, n_test=n_test, alpha=alpha)
+    out["mean_a"] = float(a.loc[common, metric].mean())
+    out["mean_b"] = float(b.loc[common, metric].mean())
+    return out
 
 
 def bootstrap_threshold_diff(

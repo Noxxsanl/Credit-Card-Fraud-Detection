@@ -133,6 +133,72 @@ def test_threshold_missing_key_is_reported():
     assert artifacts.validate_threshold(payload) == ["thiếu khóa: model_version"]
 
 
+def test_threshold_policy_with_budget_is_valid_and_must_be_among_alternatives():
+    """docs/11 M1: chính sách mặc định min_cost_within_budget phải có mặt trong alternatives."""
+    ok = _threshold(default_threshold=0.9, selection_method="min_cost_within_budget",
+                    alternatives={"min_cost_within_budget": 0.9, "min_expected_cost": 0.02, "default_naive": 0.5},
+                    constraints={"alert_budget_per_day": 200.0})
+    assert artifacts.validate_threshold(ok) == []
+    missing = _threshold(default_threshold=0.9, selection_method="min_cost_within_budget",
+                         alternatives={"min_expected_cost": 0.02, "default_naive": 0.5})
+    assert any("thiếu phương án đã chọn" in p for p in artifacts.validate_threshold(missing))
+
+
+# --------------------------------------------------------------------------
+# oof_scores.npz và payload nhị phân cho UI-D1 (docs/11 M2, M3)
+# --------------------------------------------------------------------------
+
+def test_oof_scores_round_trip_with_method(tmp_path):
+    y = np.array([0, 1, 0, 0, 1])
+    s = np.array([0.1, 0.9, 0.2, 0.3, 0.7], dtype="float32")
+    path = artifacts.write_oof_scores(tmp_path / "oof.npz", y, s, train_fraction=0.8, days=1.6,
+                                      method="temporal_forward_chaining")
+    back = artifacts.read_oof_scores(path)
+    assert back["method"] == "temporal_forward_chaining" and back["days"] == 1.6
+    assert back["y_score"].dtype == np.float32 and np.array_equal(back["y_score"], s)
+    assert artifacts.validate_oof_scores(back) == []
+    with pytest.raises(ValueError, match="method"):
+        artifacts.write_oof_scores(tmp_path / "bad.npz", y, s, train_fraction=0.8, method="kfold")
+
+
+def test_old_oof_scores_without_method_read_as_random_cv(tmp_path):
+    path = tmp_path / "old.npz"
+    np.savez_compressed(path, y_true=np.array([0, 1], dtype="int8"), y_score=np.array([0.1, 0.9]),
+                        train_fraction=np.float64(0.8), days=np.float64(2.0))
+    assert artifacts.read_oof_scores(path)["method"] == "random_cv"
+
+
+@pytest.mark.parametrize("dtype, code", [("float32", 1), ("float64", 2)])
+def test_sorted_scores_payload_round_trips_exactly(dtype, code):
+    rng = np.random.default_rng(1)
+    y = (rng.random(1_000) < 0.05).astype(int)
+    s = rng.random(1_000)
+    if dtype == "float32":
+        s = s.astype("float32")
+    payload = artifacts.sorted_scores_payload(y, s, sample_fraction=0.8, days=1.5)
+    assert payload[:4] == b"FDSC" and payload[5] == code
+    back = artifacts.read_sorted_scores_payload(payload)
+    s64 = np.asarray(s, dtype="float64")
+    assert np.array_equal(back["all"], np.sort(s64))
+    assert np.array_equal(back["positives"], np.sort(s64[y == 1]))
+    assert (back["sample_fraction"], back["days"]) == (0.8, 1.5)
+    itemsize = 4 if code == 1 else 8
+    assert len(payload) == 32 + itemsize * (y.size + y.sum())
+
+
+def test_float64_scores_that_are_float32_exact_use_four_bytes():
+    """Điểm XGBoost đọc vào dạng float64 vẫn là float32 nâng lên — không tốn 8 byte."""
+    s = np.array([0.25, 0.5, 0.125], dtype="float32").astype("float64")
+    assert artifacts.sorted_scores_payload([0, 1, 0], s, sample_fraction=1.0, days=1.0)[5] == 1
+
+
+def test_environment_records_the_git_revision():
+    git = artifacts.environment_info()["git"]
+    assert set(git) == {"commit", "dirty"}
+    if git["commit"] is not None:
+        assert re.fullmatch(r"[0-9a-f]{40}", git["commit"]) and isinstance(git["dirty"], bool)
+
+
 # --------------------------------------------------------------------------
 # metrics.json
 # --------------------------------------------------------------------------
@@ -262,7 +328,7 @@ def test_sample_pool_text_uses_vietnamese_decimal_comma(scored):
     texts = [i["description"] for i in items] + [c["rule"] for c in payload["categories"].values()]
 
     assert not any(re.search(r"\d\.\d", text) for text in texts)
-    assert payload["categories"]["legit_hard"]["rule"] == "hợp lệ, điểm ≥ τ* = 0,05000 (cảnh báo giả)"
+    assert payload["categories"]["legit_hard"]["rule"] == "hợp lệ, điểm ≥ ngưỡng mặc định = 0,05000 (cảnh báo giả)"
 
 
 def test_sample_pool_is_deterministic_and_traceable(scored):
@@ -276,6 +342,23 @@ def test_sample_pool_is_deterministic_and_traceable(scored):
         assert list(item["features"]) == RAW_REQUIRED_COLUMNS
         assert item["features"]["V14"] == raw["V14"].iloc[row]
     assert [i["id"] for i in first] == [f"S-{k:03d}" for k in range(1, 201)]
+
+
+def test_sample_pool_tops_up_legit_hard_when_the_default_threshold_leaves_few_false_alarms(scored):
+    """docs/11 M1: ngưỡng mặc định theo ngân sách thẩm định có thể rất cao — chỉ vài cảnh báo giả.
+    Nhóm legit_hard khi đó lấy các giao dịch hợp lệ điểm cao nhất, vẫn đủ 20 mẫu."""
+    raw, y, scores = scored
+    high = float(np.sort(scores[y == 0])[-5])                  # chỉ 5 giao dịch hợp lệ vượt ngưỡng
+    items = artifacts.select_sample_pool(raw, y, scores, reference_threshold=high)
+    hard = [i for i in items if i["category"] == "legit_hard"]
+    assert len(hard) == artifacts.MIN_HARD_SAMPLES
+    assert sum(i["risk_score"] >= high for i in hard) == 5
+    easy = [i for i in items if i["category"] == "legit_easy"]
+    assert max(i["risk_score"] for i in easy) <= min(i["risk_score"] for i in hard)
+    payload = artifacts.sample_pool_payload(items, generated_at="2026-10-10T10:00:00Z", model_version="xgb_test",
+                                            reference_threshold=high)
+    assert "bổ sung" in payload["categories"]["legit_hard"]["rule"]
+    assert artifacts.validate_sample_pool(payload) == []
 
 
 def test_sample_pool_caps_legit_hard_and_spreads_easy_scores(scored):
@@ -335,7 +418,8 @@ def real():
 def test_t35_model_is_a_complete_pipeline(real):
     """AR-02 — bước chuẩn hoá nằm TRONG tệp, đã fit, và nhận đúng 31 đặc trưng."""
     model = real["model"]
-    assert list(model.named_steps) == ["preprocess", "clf"]
+    # Bước lấy mẫu lại (nếu cấu hình cuối có) chỉ chạy lúc fit, không đổi điểm lúc chấm
+    assert [name for name in model.named_steps if name != "resample"] == ["preprocess", "clf"]
     scaler = model.named_steps["preprocess"].named_transformers_["amount"]
     assert type(scaler).__name__ == "RobustScaler" and hasattr(scaler, "center_")
     assert list(model.feature_names_in_) == FEATURE_ORDER
@@ -373,7 +457,16 @@ def test_t36_headline_matches_exported_scores(real):
     tp, fp, fn, tn = confusion_counts(y, s, tau)
     assert metrics["confusion_at_default"] == {"threshold": tau, "tp": tp, "fp": fp, "fn": fn, "tn": tn}
     assert metrics["headline"]["pr_auc"]["value"] >= 0.75            # AC-M1
-    assert metrics["headline"]["recall"]["value"] >= 0.75            # AC-M2
+
+    # AC-M2 tại ngưỡng mặc định là kết quả được GHI LẠI, không phải điều kiện để xuất (docs/11 M1):
+    # chỉ kiểm khối acceptance nói đúng điều mà các con số nói
+    acceptance = metrics.get("acceptance")
+    if acceptance:
+        recall = metrics["headline"]["recall"]["value"]
+        assert acceptance["ac_m2"]["threshold"] == tau
+        assert acceptance["ac_m2"]["value"] == recall
+        assert acceptance["ac_m2"]["passed"] == (recall >= 0.75)
+        assert acceptance["ac_m1"]["passed"] == (metrics["headline"]["pr_auc"]["value"] >= 0.75)
 
 
 @needs_artifacts

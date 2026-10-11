@@ -19,6 +19,8 @@ import json
 import os
 import platform
 import re
+import struct
+import subprocess
 from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
@@ -81,8 +83,25 @@ def utc_timestamp(moment: datetime | None = None) -> str:
     return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def git_revision(root: Path | None = None) -> dict:
+    """Commit của mã nguồn lúc xuất hiện vật, và cây làm việc có thay đổi chưa commit không.
+
+    Ghi vào ``metrics.json → environment`` để biết hiện vật sinh ra từ mã nào (docs/11 m5). Máy không
+    có git (ví dụ ảnh Docker của API) thì trả ``None``.
+    """
+    root = Path(root or Path(__file__).resolve().parents[1])
+    try:
+        commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True,
+                                check=True, timeout=10).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root,
+                               capture_output=True, text=True, check=True, timeout=10).stdout.strip() != ""
+    except (OSError, subprocess.SubprocessError):
+        return {"commit": None, "dirty": None}
+    return {"commit": commit, "dirty": dirty}
+
+
 def environment_info() -> dict:
-    """Phiên bản Python và thư viện lúc xuất hiện vật, kèm số lõi CPU.
+    """Phiên bản Python và thư viện lúc xuất hiện vật, kèm số lõi CPU và commit của mã nguồn.
 
     Số lõi có mặt vì XGBoost ``hist`` cho điểm lệch nhẹ theo số luồng (10 §6).
     """
@@ -92,7 +111,8 @@ def environment_info() -> dict:
             packages[name] = metadata.version(name)
         except metadata.PackageNotFoundError:
             packages[name] = None
-    return {"python": platform.python_version(), "cpu_count": os.cpu_count(), "packages": packages}
+    return {"python": platform.python_version(), "cpu_count": os.cpu_count(), "packages": packages,
+            "git": git_revision()}
 
 
 def to_jsonable(obj):
@@ -207,7 +227,9 @@ def validate_threshold(payload: dict) -> list[str]:
             if not (isinstance(value, (int, float)) and 0 < value < 1):
                 problems.append(f"alternatives.{name} phải nằm trong (0, 1): {value!r}")
         chosen = alternatives.get(payload["selection_method"])
-        if chosen is not None and chosen != tau:
+        if chosen is None:
+            problems.append(f"alternatives thiếu phương án đã chọn {payload['selection_method']!r}")
+        elif chosen != tau:
             problems.append(
                 f"default_threshold {tau} khác phương án {payload['selection_method']} = {chosen}"
             )
@@ -362,12 +384,23 @@ def validate_metrics(payload: dict) -> list[str]:
 # models/oof_scores.npz — 06 §6.4
 # --------------------------------------------------------------------------
 
-def write_oof_scores(path, y_true, y_scores, *, train_fraction: float, days: float = DATASET_DAYS) -> Path:
+#: Hai cách sinh điểm chọn ngưỡng. Từ review 2026-10-10 hệ thống dùng ``temporal_forward_chaining``
+#: (docs/11 M2); ``random_cv`` là cross-validation ngẫu nhiên 5 fold của bản trước.
+OOF_METHODS = ("random_cv", "temporal_forward_chaining")
+
+
+def write_oof_scores(path, y_true, y_scores, *, train_fraction: float, days: float = DATASET_DAYS,
+                     method: str = "random_cv") -> Path:
     """Điểm out-of-fold của tập huấn luyện — nơi API-12 chọn ngưỡng (ML-08).
 
     Giữ nguyên kiểu float32 của ``predict_proba``: ngưỡng ứng viên là chính các giá
     trị này, đổi kiểu là lệch nghiệm ở chữ số cuối so với ``threshold.json``.
+
+    ``train_fraction`` và ``days`` mô tả phần luồng giao dịch mà các điểm này đại diện, để quy
+    đổi số cảnh báo ra mỗi ngày: với điểm forward-chaining, ``days`` là độ dài các cửa sổ kiểm định.
     """
+    if method not in OOF_METHODS:
+        raise ValueError(f"method phải là một trong {OOF_METHODS}: {method!r}")
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.stem + ".tmp.npz")
@@ -377,6 +410,7 @@ def write_oof_scores(path, y_true, y_scores, *, train_fraction: float, days: flo
         y_score=np.asarray(y_scores),
         train_fraction=np.float64(train_fraction),
         days=np.float64(days),
+        method=np.str_(method),
     )
     os.replace(tmp, path)
     return path
@@ -389,7 +423,56 @@ def read_oof_scores(path) -> dict:
             "y_score": npz["y_score"],
             "train_fraction": float(npz["train_fraction"]),
             "days": float(npz["days"]),
+            "method": str(npz["method"]) if "method" in npz.files else "random_cv",
         }
+
+
+# --------------------------------------------------------------------------
+# Điểm đã sắp gửi cho trình duyệt — UI-D1 trên điểm chọn ngưỡng (docs/11 M3)
+# --------------------------------------------------------------------------
+
+#: Định dạng nhị phân, little-endian: 4 byte "FDSC", 1 byte phiên bản, 1 byte kiểu số (1 = float32,
+#: 2 = float64), 2 byte trống, uint32 số điểm, uint32 số điểm dương, float64 tỷ lệ mẫu, float64 số
+#: ngày — 32 byte — rồi mọi điểm đã sắp tăng dần, rồi điểm của lớp dương đã sắp tăng dần.
+SORTED_SCORES_MAGIC = b"FDSC"
+_SORTED_SCORES_HEADER = struct.Struct("<4sBBHIIdd")
+
+
+def sorted_scores_payload(y_true, y_scores, *, sample_fraction: float, days: float) -> bytes:
+    """Đóng gói điểm cho UI-D1: trình duyệt chỉ cần hai mảng đã sắp để đếm TP/FP ở mọi ngưỡng.
+
+    226.980 điểm out-of-fold dạng JSON nặng khoảng 5 MB; float32 nhị phân chưa tới 1 MB. Điểm của
+    XGBoost vốn là float32, nên giữ float32 không mất bit nào; mảng không biểu diễn đúng được bằng
+    float32 thì gửi float64. Trình duyệt đọc lại bằng ``decodeSortedScores`` của ``threshold.mjs``
+    và ``web/threshold.js`` (TC-12 kiểm cả đường này).
+    """
+    y_true = np.asarray(y_true).astype(int).ravel()
+    scores = np.asarray(y_scores).ravel()
+    if y_true.shape != scores.shape:
+        raise ValueError("y_true và y_scores khác độ dài")
+    as64 = scores.astype("float64")
+    if np.array_equal(as64.astype("float32").astype("float64"), as64):
+        dtype, code = "<f4", 1
+    else:
+        dtype, code = "<f8", 2
+    all_sorted = np.sort(as64).astype(dtype)
+    positives = np.sort(as64[y_true == 1]).astype(dtype)
+    header = _SORTED_SCORES_HEADER.pack(SORTED_SCORES_MAGIC, 1, code, 0, all_sorted.size, positives.size,
+                                        float(sample_fraction), float(days))
+    return header + all_sorted.tobytes() + positives.tobytes()
+
+
+def read_sorted_scores_payload(payload: bytes) -> dict:
+    """Đọc ngược ``sorted_scores_payload`` — dùng trong kiểm thử."""
+    magic, version, code, _, n_all, n_pos, fraction, days = _SORTED_SCORES_HEADER.unpack_from(payload)
+    if magic != SORTED_SCORES_MAGIC or version != 1 or code not in (1, 2):
+        raise ValueError("không phải payload điểm đã sắp phiên bản 1")
+    dtype = "<f4" if code == 1 else "<f8"
+    size = np.dtype(dtype).itemsize
+    start = _SORTED_SCORES_HEADER.size
+    all_sorted = np.frombuffer(payload, dtype=dtype, count=n_all, offset=start).astype("float64")
+    positives = np.frombuffer(payload, dtype=dtype, count=n_pos, offset=start + size * n_all).astype("float64")
+    return {"all": all_sorted, "positives": positives, "sample_fraction": fraction, "days": days}
 
 
 def validate_oof_scores(oof: dict, *, fingerprint: str | None = None) -> list[str]:
@@ -404,6 +487,10 @@ def validate_oof_scores(oof: dict, *, fingerprint: str | None = None) -> list[st
         problems.append("y_score phải nằm trong [0, 1]")
     if not 0 < oof["train_fraction"] <= 1:
         problems.append(f"train_fraction phải nằm trong (0, 1]: {oof['train_fraction']}")
+    if not oof.get("days", 0) > 0:
+        problems.append(f"days phải dương: {oof.get('days')}")
+    if oof.get("method", "random_cv") not in OOF_METHODS:
+        problems.append(f"method không hợp lệ: {oof.get('method')!r}")
     if fingerprint is not None and not problems and score_fingerprint(y_score) != fingerprint:
         problems.append("dấu vân tay khác metrics.json — hai tệp không cùng một lần xuất")
     return problems
@@ -435,15 +522,17 @@ def _describe(category: str, score: float, reference: float, fraud_cutoff: float
         return f"Gian lận — điểm rủi ro cao, vượt cả ngưỡng {_so(fraud_cutoff)}"
     if category == "fraud_hard":
         if score < reference:
-            return "Gian lận bị bỏ lọt — điểm dưới cả ngưỡng đề xuất τ*"
-        return f"Gian lận ở vùng biên — chỉ bắt được khi hạ ngưỡng từ {_so(fraud_cutoff)} về τ*"
+            return "Gian lận bị bỏ lọt — điểm dưới cả ngưỡng mặc định"
+        return f"Gian lận ở vùng biên — bắt được ở ngưỡng mặc định nhưng bỏ lọt ở {_so(fraud_cutoff)}"
     if category == "legit_easy":
         if score < reference / 2:
             return "Hợp lệ điển hình — điểm rủi ro rất thấp"
-        return "Hợp lệ sát ngưỡng — vẫn được cho qua ở τ*"
-    if score >= fraud_cutoff:
+        return "Hợp lệ sát ngưỡng — vẫn được cho qua ở ngưỡng mặc định"
+    if score < reference:
+        return "Hợp lệ điểm cao nhất dưới ngưỡng mặc định — thành cảnh báo giả nếu hạ ngưỡng"
+    if score >= fraud_cutoff and reference < fraud_cutoff:
         return f"Hợp lệ nhưng điểm rất cao — cảnh báo giả ngay cả ở ngưỡng {_so(fraud_cutoff)}"
-    return "Hợp lệ nhưng điểm cao — cảnh báo giả ở ngưỡng đề xuất τ*"
+    return "Hợp lệ nhưng điểm cao — cảnh báo giả ở ngưỡng mặc định"
 
 
 def select_sample_pool(
@@ -456,10 +545,11 @@ def select_sample_pool(
     n_fraud: int = 50,
     n_legit: int = 150,
     max_legit_hard: int = 40,
+    min_legit_hard: int = MIN_HARD_SAMPLES,
 ) -> list[dict]:
     """Chọn thư viện mẫu bốn nhóm cho buổi trình diễn (FR-25, T-37).
 
-    Luật chia nhóm, với τ* = ``reference_threshold``:
+    Luật chia nhóm, với ngưỡng mặc định τ = ``reference_threshold``:
 
     ``fraud_hard``
         Gian lận có điểm dưới ``fraud_cutoff`` (0,5): ngưỡng mặc định bỏ lọt.
@@ -468,8 +558,11 @@ def select_sample_pool(
     ``fraud_easy``
         Gian lận còn lại, lấy trải đều theo thứ hạng điểm cho đủ ``n_fraud``.
     ``legit_hard``
-        Hợp lệ có điểm từ τ* trở lên: cảnh báo giả ở ngưỡng đề xuất. Tối đa
-        ``max_legit_hard`` mẫu, trải đều theo điểm.
+        Hợp lệ có điểm từ τ trở lên: cảnh báo giả ở ngưỡng mặc định. Tối đa
+        ``max_legit_hard`` mẫu, trải đều theo điểm. Ngưỡng mặc định chọn theo ngân sách
+        thẩm định (docs/11 M1) có thể chỉ để lại vài cảnh báo giả; khi đó nhóm được bổ sung bằng
+        các giao dịch hợp lệ có điểm cao nhất ngay dưới τ cho đủ ``min_legit_hard`` — đúng những
+        giao dịch thành cảnh báo giả nếu hạ ngưỡng.
     ``legit_easy``
         Hợp lệ còn lại, trải đều theo thứ hạng điểm cho đủ ``n_legit``.
 
@@ -494,10 +587,14 @@ def select_sample_pool(
     fraud_hard = fraud[y_scores[fraud] < fraud_cutoff]
     fraud_hard = _evenly_spaced(fraud_hard, y_scores, n_fraud)
     fraud_easy = _evenly_spaced(fraud[y_scores[fraud] >= fraud_cutoff], y_scores, n_fraud - fraud_hard.size)
-    legit_hard = _evenly_spaced(legit[y_scores[legit] >= reference_threshold], y_scores, max_legit_hard)
-    legit_easy = _evenly_spaced(
-        legit[y_scores[legit] < reference_threshold], y_scores, n_legit - legit_hard.size
-    )
+    above = legit[y_scores[legit] >= reference_threshold]
+    if above.size >= min_legit_hard:
+        legit_hard = _evenly_spaced(above, y_scores, max_legit_hard)
+        easy_pool = legit[y_scores[legit] < reference_threshold]
+    else:
+        ranked = legit[np.argsort(-y_scores[legit], kind="stable")]
+        legit_hard, easy_pool = ranked[:min_legit_hard], ranked[min_legit_hard:]
+    legit_easy = _evenly_spaced(easy_pool, y_scores, n_legit - legit_hard.size)
 
     values = raw[RAW_REQUIRED_COLUMNS].to_numpy(dtype="float64")
     items = []
@@ -529,11 +626,15 @@ def sample_pool_payload(
 ) -> dict:
     """Nội dung ``data/sample_pool.json``, kèm luật chia nhóm để người đọc tệp hiểu được."""
     counts = {c: sum(item["category"] == c for item in items) for c in SAMPLE_CATEGORIES}
+    tau = _so(reference_threshold, '.5f')
+    topped_up = any(i["category"] == "legit_hard" and i["risk_score"] < reference_threshold for i in items)
     rules = {
         "fraud_easy": f"gian lận, điểm ≥ {_so(fraud_cutoff)}",
-        "fraud_hard": f"gian lận, điểm < {_so(fraud_cutoff)} (ngưỡng mặc định bỏ lọt)",
-        "legit_easy": f"hợp lệ, điểm < τ* = {_so(reference_threshold, '.5f')}",
-        "legit_hard": f"hợp lệ, điểm ≥ τ* = {_so(reference_threshold, '.5f')} (cảnh báo giả)",
+        "fraud_hard": f"gian lận, điểm < {_so(fraud_cutoff)} (ngưỡng 0,5 bỏ lọt)",
+        "legit_easy": f"hợp lệ, điểm < ngưỡng mặc định = {tau}",
+        "legit_hard": (f"hợp lệ có điểm cao nhất: mọi cảnh báo giả ở ngưỡng mặc định = {tau}, bổ sung các giao "
+                       f"dịch sát dưới ngưỡng cho đủ {MIN_HARD_SAMPLES}" if topped_up
+                       else f"hợp lệ, điểm ≥ ngưỡng mặc định = {tau} (cảnh báo giả)"),
     }
     return {
         "generated_at": generated_at,

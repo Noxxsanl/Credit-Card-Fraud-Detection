@@ -20,11 +20,16 @@ là nơi thể hiện luận điểm chính của đồ án.
 
 ## 2. Quyết định thiết kế xuyên suốt
 
-**UI-D1 — Tính chỉ số ngưỡng ở phía máy khách.** Lúc tải trang, giao diện gọi
-`GET /api/v1/metrics?section=test_scores` một lần để lấy hai mảng `y_true`,
-`y_score` (khoảng 57.000 phần tử, vài MB). Mọi lần kéo thanh trượt sau đó tính
-lại TP/FP/FN ngay trong trình duyệt, không gọi mạng. Đây là cách chắc chắn đạt
-NFR-03 (< 200 ms) kể cả khi máy chủ chậm.
+**UI-D1 — Tính chỉ số ngưỡng ở phía máy khách.** Lúc mở màn hình Ngưỡng, giao diện gọi
+`GET /api/v1/threshold/oof-scores` (API-17) một lần để lấy **điểm chọn ngưỡng** — điểm
+out-of-fold forward-chaining của tập huấn luyện, dạng nhị phân đã sắp, dưới 1 MB. Mọi lần kéo
+thanh trượt sau đó tính lại TP/FP/FN ngay trong trình duyệt bằng hai phép tìm nhị phân, không gọi
+mạng. Đây là cách chắc chắn đạt NFR-03 (< 200 ms) kể cả khi máy chủ chậm.
+
+Thanh trượt **không** tính trên tập kiểm thử (từ review 2026-10-10, [11](11-review-ml-va-ke-hoach-sua.md) M3): kéo thanh trượt
+là chọn ngưỡng, và chọn ngưỡng bằng tập kiểm thử làm mọi con số báo cáo trên tập đó lạc quan
+(ML-08). Điểm tập kiểm thử (`GET /metrics?section=test_scores`) vẫn được nạp, nhưng chỉ để **báo
+cáo** ngưỡng đã áp dụng: dòng tóm tắt của UI-01, một dòng chỉ đọc ở UI-03, và UI-04.
 
 `API-11 /threshold/preview` vẫn tồn tại: nó là bản cài đặt chuẩn ở phía máy chủ,
 dùng cho kiểm thử đối chiếu (TC-12 — hai bên phải cho cùng kết quả) và cho phương
@@ -144,7 +149,7 @@ Màn hình có giá trị học thuật cao nhất.
 │  │      94      │  83 / 98     │    0,44      │  3.312 EUR  │  │
 │  └──────────────┴──────────────┴──────────────┴─────────────┘  │
 │  ────────────────────────────────────────────────────────────  │
-│  Chi phí bỏ lọt 1 gian lận  [ 122,21 ] EUR                     │
+│  Chi phí bỏ lọt 1 gian lận  [ 115,94 ] EUR                     │
 │  Chi phí 1 lần thẩm định    [   5,00 ] EUR                     │
 │                                                                 │
 │  Đường cong tổng chi phí theo ngưỡng                            │
@@ -157,8 +162,9 @@ Màn hình có giá trị học thuật cao nhất.
 │    └──────────────────────────────────────────► ngưỡng          │
 │                                                                 │
 │  Ngưỡng gợi ý sẵn:                                              │
-│   ( ) 0,500  Mặc định — không có cơ sở cho dữ liệu mất cân bằng │
-│   (•) 0,047  Cực tiểu chi phí kỳ vọng                           │
+│   ( ) 0,500  0,5 — không có cơ sở cho dữ liệu mất cân bằng      │
+│   (•) 0,052  Mặc định: chi phí nhỏ nhất, ≤ 200 cảnh báo/ngày    │
+│   ( ) 0,047  Cực tiểu chi phí kỳ vọng (không ràng buộc)         │
 │   ( ) 0,214  F1 lớn nhất                                        │
 │   ( ) 0,009  Ràng buộc Recall ≥ 90%                             │
 │   ( ) 0,061  Ngân sách 200 lượt thẩm định                       │
@@ -171,7 +177,8 @@ Màn hình có giá trị học thuật cao nhất.
 |---|---|
 | Phản hồi thanh trượt | < 200 ms, tính tại máy khách theo UI-D1 |
 | Đổi tham số chi phí | Vẽ lại đường cong và dịch vị trí cực tiểu; gọi `POST /threshold/optimize` với debounce 300 ms |
-| Ngưỡng gợi ý sẵn | Từ `GET /threshold` → trường `alternatives` |
+| Ngưỡng gợi ý sẵn | Từ `GET /threshold` → trường `alternatives`; phương án `policy` (mặc định `min_cost_within_budget`) đánh dấu là ngưỡng mặc định |
+| Ràng buộc | Điền sẵn `max_alerts_per_day` = `constraints.alert_budget_per_day` của `GET /threshold` khi chính sách mặc định là ngân sách thẩm định |
 | Nút áp dụng | `PUT /threshold` — ảnh hưởng toàn ứng dụng và bền vững qua khởi động lại |
 | Đường cong | Trục hoành thang log; đánh dấu ngưỡng hiện tại và cực tiểu bằng hai đường dọc khác màu |
 | Bàn phím | Thanh trượt nhận `←`/`→` bước 0,001, `PgUp`/`PgDn` bước 0,01 |
@@ -193,6 +200,8 @@ Nội dung bắt buộc:
 5. Xếp hạng đặc trưng theo SHAP đặt cạnh xếp hạng theo kiểm định thống kê (notebook 02) để đối chiếu.
 6. Bảng đối chiếu hai cách chia tập (ngẫu nhiên phân tầng và theo thời gian).
 7. Khoảng tin cậy bootstrap hiển thị dạng thanh sai số, không chỉ con số trần.
+8. Theo dõi vận hành (`GET /monitoring`, API-16): cảnh báo, precision thẩm định và recall theo từng
+   khoảng 6 giờ của dữ liệu, so với kỳ vọng; khoảng lệch quá dao động mẫu được đánh dấu ([11](11-review-ml-va-ke-hoach-sua.md) M2).
 
 Nếu hết thời gian, màn hình này thay tạm bằng các ảnh PNG xuất từ notebook — đây
 là hạng mục được phép cắt đầu tiên.
@@ -228,7 +237,7 @@ UI-04 trước.
 │ ▸ Phát lại│                                                     │
 │          │                                                      │
 │ ─────────│                                                      │
-│ v3 · 09-15│  Mô hình: xgb_scaleposweight_v3                     │
+│ v2 · 10-11│  Mô hình: xgb_none_v2                               │
 └──────────┴─────────────────────────────────────────────────────┘
 ```
 
@@ -241,7 +250,8 @@ tránh tình huống trình bày nhầm kết quả của một mô hình cũ.
 |---|---|---|
 | `threshold` | Toàn cục | `GET /threshold`, cập nhật khi `PUT` thành công |
 | `costFn`, `costFp` | Toàn cục | Như trên |
-| `testScores` | Toàn cục, nạp một lần | `GET /metrics?section=test_scores` |
+| `selection` | Toàn cục, nạp một lần khi mở UI-03 | `GET /threshold/oof-scores` (UI-D1) |
+| `testScores` | Toàn cục, nạp một lần | `GET /metrics?section=test_scores` (chỉ để báo cáo ngưỡng đã áp dụng) |
 | `metrics` | Toàn cục, nạp một lần | `GET /metrics` |
 | `queue` | UI-01 | `GET /transactions`, nạp lại khi ngưỡng hoặc bộ lọc đổi |
 | `selectedTx`, `explanation` | UI-02 | `GET /transactions/{id}`, `POST /explain` |
@@ -290,14 +300,16 @@ từ CDN: buổi bảo vệ không được phụ thuộc mạng (NFR-08). Lện
 | UI-02 | Danh sách yếu tố dương có thể ngắn hơn 5, kèm một câu giải thích | 77% giao dịch kiểm thử có ít hơn 5 đặc trưng SHAP dương (05 §7) |
 | UI-02 | Giao dịch đã có kết luận từ trước thì nhãn thật hiện ngay khi mở | Người dùng đã quyết định rồi; kèm "khớp / khác kết luận của bạn" (FR-44) |
 | UI-02 | `F`/`A` không có tác dụng khi đang gõ ghi chú hay khi giữ Ctrl/Alt | `Ctrl+F` vẫn là tìm kiếm của trình duyệt |
-| UI-03 | Thanh trượt theo **thang log10**, 0,0001 → 0,999. `←`/`→` ±0,01 đơn vị log (≈ 2,3%), `PgUp`/`PgDn` ±0,1 (≈ 26%), `Home`/`End` hai đầu; thêm ô nhập số chính xác | Với mô hình thật, τ\* = 0,0232 nằm ở 2% đầu một thanh tuyến tính, và bước 0,001 lớn gấp đôi ngưỡng "recall ≥ 90%" (0,00054). Thang log trải đều vùng quyết định 0,0005…0,97 và khớp trục của đường cong chi phí |
-| UI-03 | Mọi chi phí quy ra **EUR/ngày trên toàn luồng** (chia tỷ lệ mẫu và số ngày, như `alerts_per_day`); ô chi phí ghi thêm con số trên tập kiểm thử | Đường cong đo trên out-of-fold (80% dữ liệu), ô số đo trên tập kiểm thử (20%): quy về mỗi ngày thì hai nguồn cùng thang. Con số tập kiểm thử (2.389,78 EUR tại τ\*) là con số của báo cáo |
+| UI-03 | Thanh trượt theo **thang log10**, 0,0001 → 0,999. `←`/`→` ±0,01 đơn vị log (≈ 2,3%), `PgUp`/`PgDn` ±0,1 (≈ 26%), `Home`/`End` hai đầu; thêm ô nhập số chính xác | Với mô hình thật, τ\* nằm ở 2% đầu một thanh tuyến tính (0,0232 với mô hình trước, 0,0191 với `xgb_none_v2`), và bước 0,001 lớn hơn cả ngưỡng "recall ≥ 90%" (0,00054 trước, 0,00011 nay). Thang log trải đều vùng quyết định 0,0001…0,999 và khớp trục của đường cong chi phí |
+| UI-03 | Mọi chi phí quy ra **EUR/ngày trên toàn luồng** (chia tỷ lệ mẫu và số ngày, như `alerts_per_day`) | Từ 2026-10-10 đường cong và các ô số cùng tính trên điểm chọn ngưỡng ([11](11-review-ml-va-ke-hoach-sua.md) M3); quy về mỗi ngày để so được với ngân sách thẩm định |
+| UI-03 | Một dòng chỉ đọc dưới thanh trượt: bộ điểm đang dùng (số giao dịch, số gian lận, cách sinh) và kết quả của **ngưỡng đang áp dụng** trên tập kiểm thử | Người xem biết các ô là ước lượng để chọn, còn con số báo cáo là của tập kiểm thử, tại ngưỡng đã chốt |
 | UI-03 | Trục tung đường cong cắt ở khoảng 2,5 lần cực tiểu | Hai đầu vọt tới khoảng 30.000 EUR/ngày và đè bẹp vùng đáy chữ U — chỗ duy nhất có quyết định |
 | UI-03 | Mỗi ô số kèm chênh lệch so với ngưỡng đang áp dụng | Kịch bản bảo vệ 0,5 → τ\* đọc được ngay trên màn hình |
 | UI-03 | Ràng buộc vận hành (FR-33) nhập ở đây; `constraint_binding` hiện bằng câu chữ | Trả lời "bị giới hạn bởi ngân sách thẩm định hay bởi chính chi phí" (05 §3, API-12) |
 | UI-03 | Màn hình tự ghi thời gian tính và thời gian tới khi vẽ xong khung hình | Bằng chứng AC-A3 ngay trên màn hình, không cần mở DevTools |
 | UI-04 | Thêm đường PR và ROC của mô hình xuất trên tập kiểm thử | FR-42 đòi đường ROC; §6 không liệt kê |
 | UI-04 | Khoảng tin cậy dạng thanh sai số HTML: bốn chỉ số chính, và PR-AUC của bốn mô hình ở bảng đối chiếu | Thấy ngay khoảng của hồi quy logistic và cây quyết định chồng lên nhau |
+| UI-04 | Thẻ "Theo dõi vận hành" (mục 8 của §6), khoảng 6 giờ, có dòng tổng | [11](11-review-ml-va-ke-hoach-sua.md) M2; khoảng 24 giờ thì hai ngày dữ liệu chỉ còn hai dòng |
 | UI-05 | Trình duyệt tự đếm (bỏ trùng theo mã giao dịch); tiếp tục phát với `start` = `sim_seconds` cuối cùng đã nhận | `stats` của máy chủ đếm lại từ 0 mỗi kết nối; giây cuối được phát lại khi tiếp tục nên phải bỏ trùng |
 | UI-05 | Mất kết nối thì đóng `EventSource` và tự nối lại sau 3 giây từ chỗ dừng | Để mặc định, `EventSource` tự nối lại với URL cũ, tức phát lại từ `start` ban đầu |
 | UI-05 | Sự kiện gộp theo khung hình (`requestAnimationFrame`); tốc độ 9 nấc từ 1 tới 3.600 lần | Ở 3.600 lần có hơn nghìn giao dịch mỗi giây — vẽ từng sự kiện là treo trang |
@@ -315,7 +327,7 @@ và [lenh-chay §8.6](lenh-chay.md).
 | Điều hướng | `#/queue`, `#/threshold`… trong một trang | route thật `/`, `/threshold/`, `/performance/`, `/replay/`, xuất tĩnh ra `out/` |
 | Giữ trạng thái khi đổi màn hình | cả 4 màn hình luôn nằm trong DOM (`x-show`) | trạng thái cần giữ nằm ở context của layout gốc: `ThresholdDraftContext` (vị trí thanh trượt, tham số chi phí), `ReplayContext` (luồng SSE chạy tiếp khi sang Hàng đợi) |
 | UI-D1 | `web/threshold.js` (UMD) | `frontend/src/lib/threshold.mjs` (ES module). TC-12 đối chiếu **cả hai** với `src/threshold.py` |
-| Mảng điểm tập kiểm thử | ngoài trạng thái Alpine (Proxy làm chậm) | trong state React — so sánh theo tham chiếu nên kích thước không ảnh hưởng |
+| Mảng điểm (chọn ngưỡng, tập kiểm thử) | ngoài trạng thái Alpine (Proxy làm chậm) | trong state React — so sánh theo tham chiếu nên kích thước không ảnh hưởng |
 | Biểu đồ | Chart.js (canvas) | Recharts (SVG); PR/ROC không có tooltip, số liệu nằm ở bảng ngay dưới |
 | Biểu đồ vẽ lại khi kéo | trong `requestAnimationFrame` | ở mức ưu tiên thấp (`useDeferredValue`): ô số cập nhật trước, biểu đồ theo sau |
 | AC-A3 (lâu nhất trên 21 lần kéo) | 20 ms | 39 ms |

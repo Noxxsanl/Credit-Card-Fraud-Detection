@@ -16,6 +16,7 @@ import { MODEL, modelLabel, SPLIT, STRATEGY } from "@/lib/labels";
 import type { PerformanceData } from "@/lib/types";
 
 import { UnitCurveChart } from "../charts/UnitCurveChart";
+import { MonitoringCard } from "../MonitoringCard";
 import { Card, Tile } from "../ui";
 
 const SECTIONS = ["headline", "grid_results", "strategy_pr_curves", "baseline_comparison", "shap_global",
@@ -88,8 +89,8 @@ export function PerformanceScreen() {
   const ciRows = [
     { key: "pr_auc", label: "PR-AUC", ...h.pr_auc },
     { key: "roc_auc", label: "ROC-AUC", ...h.roc_auc },
-    { key: "recall", label: "Recall tại τ*", ...h.recall },
-    { key: "precision", label: "Precision tại τ*", ...h.precision },
+    { key: "recall", label: "Recall tại ngưỡng mặc định", ...h.recall },
+    { key: "precision", label: "Precision tại ngưỡng mặc định", ...h.precision },
   ];
   const modelCiRows = data.baseline_comparison.map((b) => ({
     key: b.model, label: modelLabel(b.model), value: b.pr_auc, ci_low: b.pr_auc_ci_low, ci_high: b.pr_auc_ci_high,
@@ -347,6 +348,9 @@ export function PerformanceScreen() {
           </div>
         </Card>
       </div>
+
+      {/* 8 — Theo dõi vận hành (docs/11 M2) */}
+      <MonitoringCard />
     </div>
   );
 }

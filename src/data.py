@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
@@ -24,8 +25,10 @@ from .config import (
     TEST_SIZE,
 )
 from .features import (
+    AMOUNT_COLUMN,
     RAW_REQUIRED_COLUMNS,
     TIME_COLUMN,
+    V_COLUMNS,
     build_features,
     hour_of_day,
 )
@@ -200,6 +203,19 @@ def temporal_split(df: pd.DataFrame, *, as_features: bool = True):
         train_df[TARGET].astype(int),
         test_df[TARGET].astype(int),
     )
+
+
+def near_duplicate_mask(reference: pd.DataFrame, candidates: pd.DataFrame, *, columns=None) -> np.ndarray:
+    """Dòng nào của ``candidates`` trùng một dòng của ``reference`` ở mọi cột đặc trưng trừ ``Time``.
+
+    Loại trùng lặp hoàn toàn (DS-20) không bắt được hai giao dịch giống hệt nhau ở V1–V28 và
+    ``Amount`` nhưng khác thời điểm: chúng vẫn có thể rơi vào cả tập huấn luyện lẫn tập kiểm thử
+    (docs/11 m3). Hàm này đếm chúng để biết rò rỉ kiểu đó có đáng kể không.
+    """
+    columns = list(columns or [*V_COLUMNS, AMOUNT_COLUMN])
+    seen = reference[columns].drop_duplicates().assign(_trung=True)
+    merged = candidates[columns].reset_index(drop=True).merge(seen, on=columns, how="left")
+    return merged["_trung"].eq(True).to_numpy()
 
 
 def class_balance(y) -> pd.DataFrame:

@@ -19,6 +19,7 @@ sở hữu quyết định đó — các tệp khác chỉ tham chiếu tới.
 | 08 | [Kế hoạch kiểm thử](08-ke-hoach-kiem-thu.md) | Chứng minh hệ thống đúng bằng cách nào | Tất cả |
 | 09 | [Kế hoạch triển khai](09-ke-hoach-trien-khai.md) | Ai làm gì, ngày nào, xong là thế nào | Tất cả |
 | 10 | [Vận hành và tái lập](10-van-hanh-tai-lap.md) | Chạy lại toàn bộ từ đầu bằng lệnh gì | Người chấm, người mới |
+| 11 | [Review ML và kế hoạch sửa](11-review-ml-va-ke-hoach-sua.md) | Phần mô hình còn yếu ở đâu, đã sửa gì, con số nào thay đổi | Người chấm, người làm mô hình |
 | — | [Lệnh chạy giai đoạn 3–9](lenh-chay.md) | Chạy lại từng giai đoạn bằng lệnh gì: lưới mất cân bằng (§3), tìm kiếm siêu tham số (§4), ngưỡng và SHAP (§5), xuất hiện vật (§6), API (§7), giao diện (§8), Docker Compose và nghiệm thu (§9) | Người làm mô hình, người lập trình, người chấm |
 | — | [Danh sách công việc](../TASKS.md) | Còn phải làm những gì, xong là thế nào | Người thực hiện |
 
@@ -44,6 +45,7 @@ Mọi hạng mục có mã riêng để trích dẫn chéo giữa các tài li�
 |---|---|---|
 | 1.0 | 2026-09-12 | Bản đầu tiên, tách từ hai tài liệu nháp ở thư mục gốc |
 | 1.1 | 2026-09-12 | Chuyển cơ sở dữ liệu từ SQLite sang PostgreSQL 16: viết lại 06, cập nhật 01, 02, 03, 05, 08, 09, 10 |
+| 1.2 | 2026-10-11 | Review phần ML (11): ngưỡng mặc định theo ngân sách thẩm định, chọn ngưỡng forward-chaining, so chiến lược ở cùng mức cân bằng; cập nhật 04, 05, 06, 07, 08, 10 |
 
 ## Bản nháp ban đầu — `docs/luu-tru/`
 
@@ -63,6 +65,7 @@ Không cần đọc hết hơn 7.000 dòng tài liệu. Theo thứ tự:
    chọn ngưỡng theo chi phí, với số thật.
 3. Notebook [06](../notebooks/06_threshold_and_cost.ipynb) mục 6 — chi phí theo số tiền, ngưỡng đề xuất chặn.
 4. [08 — Kế hoạch kiểm thử](08-ke-hoach-kiem-thu.md) §4 — bảng nghiệm thu AC-M, AC-A.
+5. [11 — Review ML và kế hoạch sửa](11-review-ml-va-ke-hoach-sua.md) — các điểm yếu đã biết và cách đã xử lý.
 
 `lenh-chay.md` (lệnh từng giai đoạn) và [TASKS.md](../TASKS.md) (nhật ký làm việc) là tài liệu
 thao tác, không cần đọc để đánh giá kết quả.

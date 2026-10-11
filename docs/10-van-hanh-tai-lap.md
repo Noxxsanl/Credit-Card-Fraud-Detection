@@ -136,21 +136,29 @@ Chạy notebook theo đúng thứ tự, mỗi notebook trong kernel sạch:
 | 1 | `01_eda.ipynb` | 3–5 phút | `reports/figures/01_*.png` |
 | 2 | `02_statistics.ipynb` | 2–4 phút | Bảng xếp hạng đặc trưng |
 | 3 | `03_baseline.ipynb` | 5–10 phút | `data/test_set.parquet` |
-| 4 | `04_imbalance_strategies.ipynb` | **1–3 giờ** | `reports/grid_results.csv` |
-| 5 | `05_advanced_models.ipynb` | ~20 phút tìm kiếm (`scripts/run_search.py`) + ~20 phút notebook | `reports/search_results.csv`, `final_test_metrics.csv`, `split_comparison.csv` |
-| 6 | `06_threshold_and_cost.ipynb` | 2–5 phút | Đường cong chi phí |
+| 4 | `04_imbalance_strategies.ipynb` | ~8 phút notebook, sau ba script ở dưới | `reports/grid_results.csv`, `ratio_grid.csv`, `repeated_cv*.csv`; chọn cấu hình cuối (§5.8) |
+| 5 | `05_advanced_models.ipynb` | ~20 phút tìm kiếm (`scripts/run_search.py`) + ~17 phút notebook | `reports/search_results.csv`, `final_test_metrics.csv`, `split_comparison.csv`, `final_choice.json` |
+| 6 | `06_threshold_and_cost.ipynb` | ~9 phút | Ngưỡng mặc định, `threshold_comparison.csv`, `acceptance.csv`, `threshold_protocol.csv` |
 | 7 | `07_explainability.ipynb` | 10–20 phút | Biểu đồ SHAP |
 | 8 | `08_export_artifacts.ipynb` | 5–10 phút | Toàn bộ `models/*`, `data/sample_pool.json`, cột `risk_score` của `data/test_set.parquet` |
 
-Tổng khoảng 2–4 giờ, phần lớn nằm ở notebook 04.
+Notebook 01 → 08 mất khoảng 47 phút; cả bốn script khoảng 3,5 giờ. Tổng khoảng 4,5 giờ, phần lớn nằm ở bốn script chạy trước notebook 04–05 (dưới).
 
-Notebook 05 đọc `reports/grid_results.npz` (điểm out-of-fold của notebook 04, không đưa vào git)
-và `reports/search_results.csv`. Chạy trước hai lệnh:
+Notebook 04–05 đọc điểm lưu của bốn script chạy ngoài notebook (điểm out-of-fold `*.npz` không đưa
+vào git). Chạy trước, đúng thứ tự:
 
 ```bash
-python scripts/run_grid.py      # nếu chưa có reports/grid_results.npz
-python scripts/run_search.py    # 30 lần thử × 5 fold, khoảng 20 phút trên 12 lõi
+python scripts/run_grid.py          # lưới 20 tổ hợp, ~45 phút
+python scripts/run_ratio_grid.py    # lưới theo mức cân bằng, 48 tổ hợp, ~86 phút ([11](11-review-ml-va-ke-hoach-sua.md) M5)
+python scripts/run_repeated_cv.py   # CV lặp cho các cấu hình cần kết luận, ~81 phút ([11](11-review-ml-va-ke-hoach-sua.md) m2)
+python scripts/run_search.py        # 30 lần thử × 5 fold, khoảng 20 phút trên 12 lõi
 ```
+
+Notebook 04 §5.8 áp quy tắc chọn cấu hình cuối lên kết quả của hai script giữa và **dừng** nếu
+`FINAL_MODEL`, `FINAL_STRATEGY`, `FINAL_RATIO` trong `src/config.py` chưa khớp; notebook 05–08 dựng mô
+hình qua `src.modeling.final_pipeline()`, đọc từ đó. Mọi script chỉ dùng lại điểm lưu khi `config_hash`
+(tham số pipeline, cách chia CV, dữ liệu, phiên bản thư viện) khớp cấu hình hiện tại — sửa
+`src/modeling.py` thì tổ hợp liên quan tự chạy lại.
 
 Chạy không cần giao diện:
 
@@ -166,7 +174,7 @@ ls models/
 # model.joblib  explainer.joblib  metrics.json  threshold.json  oof_scores.npz
 # (API không cần explainer.joblib — chỉ notebook và kiểm thử dùng)
 
-pytest tests/test_artifacts.py      # 7 ca tích hợp kiểm chính các tệp vừa sinh
+pytest tests/test_artifacts.py      # các ca tích hợp kiểm chính các tệp vừa sinh
 ```
 
 Notebook 08 phải chạy **sau** notebook 03: chạy lại 03 là ghi đè `test_set.parquet` và mất cột
@@ -319,11 +327,15 @@ Script chụp chỉ số chính, dấu vân tay điểm (`metrics.json → finge
 và so. Đạt khi PR-AUC lệch dưới 0,001. Kết quả từng dòng ghi vào `reports/reproducibility.csv`; các
 cột đo thời gian chạy được bỏ qua khi so.
 
-Script **không** chạy lại `scripts/run_grid.py` và `scripts/run_search.py` (45 + 20 phút): notebook
-04 và 05 đọc điểm lưu của hai bước đó. Bù lại, notebook 08 tự tính lại điểm out-of-fold của mô hình
-được chọn và so với điểm lưu của lưới.
+Script **không** chạy lại bốn script ở §3 (`run_grid.py`, `run_ratio_grid.py`, `run_repeated_cv.py`,
+`run_search.py`): notebook 04 và 05 đọc điểm lưu của chúng. Từ review 2026-10-10, điểm lưu chỉ được dùng
+khi `config_hash` khớp cấu hình hiện tại, nên một điểm lưu cũ không thể lặng lẽ thay cho kết quả của mã
+mới. Notebook 08 còn tự tính lại điểm out-of-fold của mô hình được chọn và so với điểm lưu của lưới, và
+`metrics.json → environment.git` ghi commit cùng cờ "có thay đổi chưa commit" của lần xuất.
 
-Lần kiểm tra 2026-09-27 (12 lõi): chạy lại 01 → 08 mất 71 phút, PR-AUC lệch **0**, dấu vân tay điểm
+Lần kiểm tra 2026-10-11 (12 lõi, `xgb_none_v2`, sau review): chạy lại 01 → 08 mất 46,5 phút, PR-AUC lệch
+**0**, dấu vân tay điểm và cả 20 bảng `reports/*.csv` trùng hoàn toàn. Lần kiểm tra 2026-09-27 (mô hình
+trước): chạy lại 01 → 08 mất 71 phút, PR-AUC lệch **0**, dấu vân tay điểm
 và cả 11 bảng `reports/*.csv` trùng hoàn toàn. Chi tiết ở [lệnh chạy §6.4](lenh-chay.md).
 
 Nếu lệch lớn hơn, tìm theo thứ tự: bước ngẫu nhiên chưa ghim seed → thao tác

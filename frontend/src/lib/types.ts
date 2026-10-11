@@ -21,10 +21,22 @@ export interface Health {
   uptime_seconds: number;
 }
 
+export interface SelectionInfo {
+  /** temporal_forward_chaining (từ review 2026-10-10) hoặc random_cv */
+  method: string;
+  n: number;
+  n_fraud: number;
+  sample_fraction: number;
+  days: number;
+}
+
 export interface ThresholdState {
   current: number;
   source: "artifact" | "user";
   default: number;
+  /** Cách chọn ngưỡng mặc định, ví dụ min_cost_within_budget (docs/11 M1) */
+  policy: string;
+  constraints: Record<string, number>;
   cost_fn: number;
   cost_fp: number;
   alternatives: Record<string, number>;
@@ -32,6 +44,8 @@ export interface ThresholdState {
   /** Từ điểm này trở lên (và ≥ current) API trả decision = "block" — chọn theo precision trên OOF */
   block_threshold: number;
   block_min_precision: number;
+  /** Điểm mà preview, optimize và màn hình Ngưỡng dùng (docs/11 M3) */
+  selection: SelectionInfo;
 }
 
 export interface ThresholdMetricsOut {
@@ -65,10 +79,11 @@ export interface OptimizeResponse {
   constraint_binding: boolean;
   constraint_satisfied: boolean;
   selected_on: "out_of_fold";
+  selection_method: string;
   cost_fn: number;
   cost_fp: number;
+  /** Trên điểm chọn ngưỡng — không đo trên tập kiểm thử (docs/11 M3) */
   metrics_at_optimal: ThresholdMetricsOut;
-  metrics_at_optimal_oof: ThresholdMetricsOut;
   curve: CurvePoint[];
   curve_source: "out_of_fold";
 }
@@ -313,4 +328,38 @@ export interface ReplayEvent {
   amount: number;
   sim_time: string;
   sim_seconds: number;
+}
+
+// ---------------------------------------------------------------- API-16 (docs/11 M2)
+
+export type MonitoringFlag = "alerts_above_expected" | "precision_below_expected" | "recall_below_expected" | "over_budget";
+
+export interface MonitoringBucket {
+  start_hour: number | null;
+  end_hour: number | null;
+  n_scored: number;
+  n_alerts: number;
+  alert_rate: number;
+  alert_rate_ci: number[];
+  alerts_per_day: number;
+  n_reviewed: number;
+  n_confirmed: number;
+  precision_reviewed: number | null;
+  precision_ci: number[] | null;
+  n_labelled_fraud: number;
+  n_caught: number;
+  recall_labelled: number | null;
+  recall_ci: number[] | null;
+  flags: MonitoringFlag[];
+}
+
+export interface MonitoringReport {
+  model_version: string;
+  threshold: number;
+  bucket_hours: number;
+  transactions_per_day: number;
+  alert_budget_per_day: number | null;
+  expected: { alert_rate: number; alerts_per_day: number; precision: number; recall: number; source: string };
+  overall: MonitoringBucket;
+  buckets: MonitoringBucket[];
 }

@@ -12,6 +12,10 @@ kernel chết là mất trắng, lại khó theo dõi tiến độ. Script này 
 ``notebooks/04_imbalance_strategies.ipynb`` và Run All: ``run_grid`` thấy điểm
 lưu nên bỏ qua toàn bộ phần huấn luyện, cả notebook xong trong khoảng một phút.
 
+Từ review 2026-10-10 (docs/11 m5), một tổ hợp chỉ được dùng lại khi cột ``config_hash`` của
+điểm lưu khớp dấu vân tay hiện tại — cùng cấu hình pipeline, cùng dữ liệu, cùng phiên bản thư
+viện. Điểm lưu cũ không có cột này thì cả lưới chạy lại.
+
 Tham số truyền cho ``run_grid`` ở đây PHẢI trùng với ô ở mục 2 của notebook.
 Lệch một tham số thì các dòng nối tiếp nhau sẽ không so sánh được với nhau.
 """
@@ -122,7 +126,7 @@ def main(argv=None) -> int:
           f"({y_train.mean():.4%})")
     print(f"Chế độ: {'RÚT GỌN (n_estimators=100)' if args.fast else 'đầy đủ theo 04 §3.2'}")
     print(f"Điểm lưu: {duong_dan}")
-    print(f"Nối tiếp điểm lưu: {'không (--fresh)' if args.fresh else 'có'}")
+    print(f"Nối tiếp điểm lưu: {'không (--fresh)' if args.fresh else 'có — chỉ tổ hợp khớp config_hash'}")
     print("-" * 78)
 
     bat_dau = time.perf_counter()

@@ -51,18 +51,20 @@ const HELPERS = () => {
   await page.goto(`${BASE}threshold/`, { waitUntil: "networkidle0" });
   await page.evaluate(HELPERS);
   await page.waitForFunction(() => window.__tile("Gian lận bắt được") && document.querySelector("#tau-slider"));
-  const timings = await page.evaluate(async () => {
+  // τ* không ràng buộc của mô hình đang chạy — đọc từ API, không ghi cứng (đổi theo mỗi lần xuất hiện vật)
+  const tauStar = await page.evaluate(async () => (await (await fetch("/api/v1/threshold")).json()).alternatives.min_expected_cost);
+  const timings = await page.evaluate(async (tauStar) => {
     const slider = document.querySelector("#tau-slider");
     const out = [];
     for (let i = 0; i <= 20; i++) {
       const before = window.__tile("Chi phí mỗi ngày");
       const t0 = performance.now();
-      window.__setRange(slider, Math.log10(0.5) + (i / 20) * (Math.log10(0.023173) - Math.log10(0.5)));
+      window.__setRange(slider, Math.log10(0.5) + (i / 20) * (Math.log10(tauStar) - Math.log10(0.5)));
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       out.push({ ms: performance.now() - t0, changed: window.__tile("Chi phí mỗi ngày") !== before });
     }
     return out;
-  });
+  }, tauStar);
   const worst = Math.max(...timings.map((t) => t.ms));
   check("AC-A3 thanh trượt cập nhật < 200 ms (21 lần kéo 0,5 → τ*)", worst < 200 && timings.filter((t) => t.changed).length > 10,
     `lâu nhất ${worst.toFixed(1)} ms, ${timings.filter((t) => t.changed).length}/21 lần đổi số`);
@@ -72,10 +74,12 @@ const HELPERS = () => {
     await sleep(200);
     return page.evaluate(() => ["Cảnh báo mỗi ngày", "Gian lận bắt được", "Precision", "Chi phí mỗi ngày"].map((l) => window.__tile(l)).join(" | "));
   };
-  const at05 = await pick("Mặc định 0,5");
+  const at05 = await pick("0,5 — mặc định của thư viện");
   await page.screenshot({ path: path.join(OUT, "nflow-threshold-05.png"), fullPage: true });
-  const atStar = await pick("Cực tiểu chi phí");
-  check("Kịch bản 0,5 → τ*", at05 !== atStar, `0,5: ${at05}  →  τ*: ${atStar}`);
+  const atDefault = await pick("Chi phí nhỏ nhất trong ngân sách");
+  const atStar = await pick("Cực tiểu chi phí, không ràng buộc");
+  check("Kịch bản 0,5 → ngưỡng mặc định → τ*", at05 !== atDefault && atDefault !== atStar,
+    `0,5: ${at05}  →  mặc định: ${atDefault}  →  τ*: ${atStar}`);
 
   await page.focus("#tau-slider");
   const kb0 = await page.evaluate(() => window.__tau());
@@ -83,11 +87,15 @@ const HELPERS = () => {
   await page.keyboard.press("ArrowRight");
   const kb1 = await page.evaluate(() => window.__tau());
   check("Thanh trượt nhận PgUp và →", kb0 !== kb1, `${kb0} → ${kb1}`);
-  await pick("Cực tiểu chi phí");
+  await pick("Cực tiểu chi phí, không ràng buộc");
 
   // ---------------- AC-A5 ----------------
   const optText = () => page.evaluate(() => [...document.querySelectorAll("p")].find((p) => p.textContent.startsWith("Ngưỡng tối ưu:"))?.querySelector("strong")?.textContent);
   await page.waitForFunction(() => [...document.querySelectorAll("p")].some((p) => p.textContent.startsWith("Ngưỡng tối ưu:")));
+  // Ràng buộc ngân sách được điền sẵn theo chính sách mặc định và đang chặn nghiệm — bỏ nó để thấy
+  // chi phí dịch ngưỡng tối ưu (AC-A5)
+  await page.select("#constraint-type", "none");
+  await sleep(1500);
   const opt0 = await optText();
   await page.click("#cost-fn", { clickCount: 3 });
   await page.type("#cost-fn", "600");
@@ -95,6 +103,7 @@ const HELPERS = () => {
   const opt1 = await optText();
   check("AC-A5 chi phí bỏ lọt 600 EUR dịch ngưỡng tối ưu", opt0 !== opt1, `${opt0} → ${opt1}`);
   await page.select("#constraint-type", "max_alerts_per_day");
+  await page.click("#constraint-value", { clickCount: 3 });
   await page.type("#constraint-value", "150");
   await sleep(3000);
   const binding = await page.evaluate(() => document.querySelector("form [aria-live]").textContent.replace(/\s+/g, " "));
@@ -102,7 +111,7 @@ const HELPERS = () => {
   await page.screenshot({ path: path.join(OUT, "nflow-threshold-cost.png"), fullPage: true });
   await page.select("#constraint-type", "none");
   await page.click("#cost-fn", { clickCount: 3 });
-  await page.type("#cost-fn", "122.21");
+  await page.type("#cost-fn", "115.94");
   await sleep(1500);
 
   // Trạng thái nháp sống qua lần chuyển trang (đi bằng liên kết của thanh bên)
@@ -112,8 +121,9 @@ const HELPERS = () => {
   await page.evaluate(() => [...document.querySelectorAll("nav a")].find((a) => a.textContent.includes("Ngưỡng")).click());
   await page.waitForSelector("#tau-slider");
   const kept = await page.evaluate(() => window.__tau());
-  check("Ngưỡng đang xem giữ nguyên sau khi chuyển trang", kept === "0,721", kept);
-  await pick("Cực tiểu chi phí");
+  const f1 = await page.evaluate(async () => (await (await fetch("/api/v1/threshold")).json()).alternatives.max_f1);
+  check("Ngưỡng đang xem giữ nguyên sau khi chuyển trang", kept === f1.toFixed(3).replace(".", ","), `${kept} (F1 lớn nhất ${f1.toFixed(4)})`);
+  await pick("Cực tiểu chi phí, không ràng buộc");
 
   // ---------------- Thư viện mẫu → hàng đợi (AC-A2) ----------------
   await page.evaluate(() => [...document.querySelectorAll("nav a")].find((a) => a.textContent.includes("Hàng đợi")).click());

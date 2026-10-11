@@ -2,52 +2,52 @@ Nạp dữ liệu…
 Tập huấn luyện: 226,980 dòng, 378 gian lận (0.1665%)
 Chế độ: đầy đủ theo 04 §3.2
 Điểm lưu: D:\WorkSpace\AI_Project\fraud-detection\reports\grid_results.csv
-Nối tiếp điểm lưu: có
+Nối tiếp điểm lưu: có — chỉ tổ hợp khớp config_hash
 ------------------------------------------------------------------------------
-[ 1/20] logistic_regression  none         PR-AUC 0.7578 ± 0.0305  R@τ* 0.854  P@τ* 0.541  (  0.3 phút, còn khoảng 5 phút)
-[ 2/20] logistic_regression  class_weight PR-AUC 0.7416 ± 0.0294  R@τ* 0.857  P@τ* 0.505  (  0.4 phút, còn khoảng 6 phút)
-[ 3/20] logistic_regression  undersample  PR-AUC 0.7185 ± 0.0206  R@τ* 0.857  P@τ* 0.415  (  0.0 phút, còn khoảng 4 phút)
-[ 4/20] logistic_regression  smote        PR-AUC 0.7572 ± 0.0235  R@τ* 0.860  P@τ* 0.544  (  0.2 phút, còn khoảng 4 phút)
-[ 5/20] logistic_regression  smote_tomek  PR-AUC 0.7572 ± 0.0235  R@τ* 0.860  P@τ* 0.544  (  4.8 phút, còn khoảng 17 phút)
-[ 6/20] decision_tree        none         PR-AUC 0.6948 ± 0.0374  R@τ* 0.780  P@τ* 0.886  (  0.4 phút, còn khoảng 14 phút)
-[ 7/20] decision_tree        class_weight PR-AUC 0.3586 ± 0.1167  R@τ* 0.796  P@τ* 0.368  (  0.4 phút, còn khoảng 12 phút)
-[ 8/20] decision_tree        undersample  PR-AUC 0.2405 ± 0.0529  R@τ* 0.839  P@τ* 0.264  (  0.0 phút, còn khoảng 10 phút)
-[ 9/20] decision_tree        smote        PR-AUC 0.6404 ± 0.0395  R@τ* 0.817  P@τ* 0.670  (  0.5 phút, còn khoảng 9 phút)
-[10/20] decision_tree        smote_tomek  PR-AUC 0.6404 ± 0.0395  R@τ* 0.817  P@τ* 0.670  (  4.6 phút, còn khoảng 12 phút)
-[11/20] random_forest        none         PR-AUC 0.8406 ± 0.0333  R@τ* 0.852  P@τ* 0.687  (  6.6 phút, còn khoảng 15 phút)
-[12/20] random_forest        class_weight PR-AUC 0.8404 ± 0.0285  R@τ* 0.852  P@τ* 0.711  (  2.6 phút, còn khoảng 14 phút)
-[13/20] random_forest        undersample  PR-AUC 0.7586 ± 0.0446  R@τ* 0.852  P@τ* 0.697  (  0.1 phút, còn khoảng 11 phút)
-[14/20] random_forest        smote        PR-AUC 0.8549 ± 0.0311  R@τ* 0.854  P@τ* 0.666  (  6.1 phút, còn khoảng 12 phút)
-[15/20] random_forest        smote_tomek  PR-AUC 0.8549 ± 0.0311  R@τ* 0.854  P@τ* 0.666  ( 10.9 phút, còn khoảng 13 phút)
-[16/20] xgboost              none         PR-AUC 0.8514 ± 0.0302  R@τ* 0.841  P@τ* 0.866  (  0.6 phút, còn khoảng 10 phút)
-[17/20] xgboost              class_weight PR-AUC 0.8549 ± 0.0301  R@τ* 0.852  P@τ* 0.702  (  0.6 phút, còn khoảng 7 phút)
-[18/20] xgboost              undersample  PR-AUC 0.7811 ± 0.0691  R@τ* 0.836  P@τ* 0.688  (  0.1 phút, còn khoảng 4 phút)
-[19/20] xgboost              smote        PR-AUC 0.8529 ± 0.0297  R@τ* 0.852  P@τ* 0.638  (  0.7 phút, còn khoảng 2 phút)
-[20/20] xgboost              smote_tomek  PR-AUC 0.8529 ± 0.0297  R@τ* 0.852  P@τ* 0.638  (  5.4 phút, còn khoảng 0 phút)
+[ 1/20] logistic_regression  none               PR-AUC 0.7578 ± 0.0305  R@τ* 0.854  P@τ* 0.541  Brier 0.000681  (  0.3 phút, còn khoảng 6 phút)
+[ 2/20] logistic_regression  class_weight       PR-AUC 0.7416 ± 0.0294  R@τ* 0.857  P@τ* 0.505  Brier 0.022449  (  0.4 phút, còn khoảng 7 phút)
+[ 3/20] logistic_regression  undersample        PR-AUC 0.7185 ± 0.0206  R@τ* 0.857  P@τ* 0.415  Brier 0.003288  (  0.0 phút, còn khoảng 5 phút)
+[ 4/20] logistic_regression  smote              PR-AUC 0.7572 ± 0.0235  R@τ* 0.860  P@τ* 0.544  Brier 0.002413  (  0.2 phút, còn khoảng 4 phút)
+[ 5/20] logistic_regression  smote_tomek        PR-AUC 0.7572 ± 0.0235  R@τ* 0.860  P@τ* 0.544  Brier 0.002413  (  7.2 phút, còn khoảng 25 phút)
+[ 6/20] decision_tree        none               PR-AUC 0.6948 ± 0.0374  R@τ* 0.780  P@τ* 0.886  Brier 0.000515  (  0.8 phút, còn khoảng 21 phút)
+[ 7/20] decision_tree        class_weight       PR-AUC 0.3586 ± 0.1167  R@τ* 0.796  P@τ* 0.368  Brier 0.016800  (  0.8 phút, còn khoảng 19 phút)
+[ 8/20] decision_tree        undersample        PR-AUC 0.2405 ± 0.0529  R@τ* 0.839  P@τ* 0.264  Brier 0.005116  (  0.0 phút, còn khoảng 15 phút)
+[ 9/20] decision_tree        smote              PR-AUC 0.6404 ± 0.0395  R@τ* 0.817  P@τ* 0.670  Brier 0.002124  (  0.9 phút, còn khoảng 13 phút)
+[10/20] decision_tree        smote_tomek        PR-AUC 0.6404 ± 0.0395  R@τ* 0.817  P@τ* 0.670  Brier 0.002124  (  9.2 phút, còn khoảng 20 phút)
+[11/20] random_forest        none               PR-AUC 0.8406 ± 0.0333  R@τ* 0.852  P@τ* 0.687  Brier 0.000411  ( 10.1 phút, còn khoảng 25 phút)
+[12/20] random_forest        class_weight       PR-AUC 0.8404 ± 0.0285  R@τ* 0.852  P@τ* 0.711  Brier 0.000421  (  3.5 phút, còn khoảng 23 phút)
+[13/20] random_forest        undersample        PR-AUC 0.7586 ± 0.0446  R@τ* 0.852  P@τ* 0.697  Brier 0.002784  (  0.2 phút, còn khoảng 18 phút)
+[14/20] random_forest        smote              PR-AUC 0.8549 ± 0.0311  R@τ* 0.854  P@τ* 0.666  Brier 0.000483  (  8.1 phút, còn khoảng 18 phút)
+[15/20] random_forest        smote_tomek        PR-AUC 0.8549 ± 0.0311  R@τ* 0.854  P@τ* 0.666  Brier 0.000483  ( 14.7 phút, còn khoảng 19 phút)
+[16/20] xgboost              none               PR-AUC 0.8514 ± 0.0302  R@τ* 0.841  P@τ* 0.866  Brier 0.000378  (  0.7 phút, còn khoảng 14 phút)
+[17/20] xgboost              class_weight       PR-AUC 0.8549 ± 0.0301  R@τ* 0.852  P@τ* 0.702  Brier 0.000408  (  0.8 phút, còn khoảng 10 phút)
+[18/20] xgboost              undersample        PR-AUC 0.7811 ± 0.0691  R@τ* 0.836  P@τ* 0.688  Brier 0.001705  (  0.1 phút, còn khoảng 7 phút)
+[19/20] xgboost              smote              PR-AUC 0.8529 ± 0.0297  R@τ* 0.852  P@τ* 0.638  Brier 0.000387  (  0.9 phút, còn khoảng 3 phút)
+[20/20] xgboost              smote_tomek        PR-AUC 0.8529 ± 0.0297  R@τ* 0.852  P@τ* 0.638  Brier 0.000387  (  7.1 phút, còn khoảng 0 phút)
 ------------------------------------------------------------------------------
-Xong 20 tổ hợp trong 45.7 phút.
+Xong 20 tổ hợp trong 66.9 phút.
 
               model     strategy  pr_auc_mean  pr_auc_std  recall  precision  n_distinct_scores  total_seconds
-            xgboost class_weight       0.8549      0.0301  0.8519     0.7015             221674        36.1468
-      random_forest        smote       0.8549      0.0311  0.8545     0.6660                219       368.1137
-      random_forest  smote_tomek       0.8549      0.0311  0.8545     0.6660                219       652.0078
-            xgboost        smote       0.8529      0.0297  0.8519     0.6376             222236        44.7438
-            xgboost  smote_tomek       0.8529      0.0297  0.8519     0.6376             222236       325.5023
-            xgboost         none       0.8514      0.0302  0.8413     0.8665             221544        33.4241
-      random_forest         none       0.8406      0.0333  0.8519     0.6866                207       398.4045
-      random_forest class_weight       0.8404      0.0285  0.8519     0.7108                200       158.7402
-            xgboost  undersample       0.7811      0.0691  0.8360     0.6885             221912         5.3313
-      random_forest  undersample       0.7586      0.0446  0.8519     0.6970                269         6.2434
-logistic_regression         none       0.7578      0.0305  0.8545     0.5410             226318        15.1165
-logistic_regression        smote       0.7572      0.0235  0.8598     0.5444             226308        13.3277
-logistic_regression  smote_tomek       0.7572      0.0235  0.8598     0.5444             226308       290.7850
-logistic_regression class_weight       0.7416      0.0294  0.8571     0.5047             226109        21.8007
-logistic_regression  undersample       0.7185      0.0206  0.8571     0.4154             226280         1.0645
-      decision_tree         none       0.6948      0.0374  0.7804     0.8859                 30        24.2957
-      decision_tree        smote       0.6404      0.0395  0.8175     0.6703                 97        28.5700
-      decision_tree  smote_tomek       0.6404      0.0395  0.8175     0.6703                 97       275.7050
-      decision_tree class_weight       0.3586      0.1167  0.7963     0.3684                 55        25.7511
-      decision_tree  undersample       0.2405      0.0529  0.8386     0.2644                 23         0.9249
+            xgboost class_weight       0.8549      0.0301  0.8519     0.7015             221674        48.1388
+      random_forest        smote       0.8549      0.0311  0.8545     0.6660                219       484.1642
+      random_forest  smote_tomek       0.8549      0.0311  0.8545     0.6660                219       883.5687
+            xgboost        smote       0.8529      0.0297  0.8519     0.6376             222236        52.8473
+            xgboost  smote_tomek       0.8529      0.0297  0.8519     0.6376             222236       426.4430
+            xgboost         none       0.8514      0.0302  0.8413     0.8665             221544        42.9348
+      random_forest         none       0.8406      0.0333  0.8519     0.6866                207       603.3682
+      random_forest class_weight       0.8404      0.0285  0.8519     0.7108                200       212.3936
+            xgboost  undersample       0.7811      0.0691  0.8360     0.6885             221912         8.1367
+      random_forest  undersample       0.7586      0.0446  0.8519     0.6970                269         9.4948
+logistic_regression         none       0.7578      0.0305  0.8545     0.5410             226318        18.0735
+logistic_regression        smote       0.7572      0.0235  0.8598     0.5444             226308        14.2591
+logistic_regression  smote_tomek       0.7572      0.0235  0.8598     0.5444             226308       429.2223
+logistic_regression class_weight       0.7416      0.0294  0.8571     0.5047             226109        23.1005
+logistic_regression  undersample       0.7185      0.0206  0.8571     0.4154             226280         1.3111
+      decision_tree         none       0.6948      0.0374  0.7804     0.8859                 30        48.6473
+      decision_tree        smote       0.6404      0.0395  0.8175     0.6703                 97        53.7497
+      decision_tree  smote_tomek       0.6404      0.0395  0.8175     0.6703                 97       554.8843
+      decision_tree class_weight       0.3586      0.1167  0.7963     0.3684                 55        46.8029
+      decision_tree  undersample       0.2405      0.0529  0.8386     0.2644                 23         1.6717
 
 T-23: PR-AUC cao nhất 0.8549, dưới ngưỡng báo động 0,95. Dải kỳ vọng 04 §3.4 là 0,80–0,87.
 

@@ -77,7 +77,7 @@
           <span class="pill-label">Ngưỡng</span>
           <strong class="figure" x-text="fmt.tau($store.app.tau)">—</strong>
           <span class="pill-source" x-show="$store.app.threshold"
-                x-text="$store.app.threshold && $store.app.threshold.source === 'user' ? 'đã đặt' : 'τ* mặc định'"></span>
+                x-text="$store.app.threshold && $store.app.threshold.source === 'user' ? 'đã đặt' : 'ngưỡng mặc định'"></span>
           <a class="btn btn-small" href="#/threshold" x-show="$store.app.route !== 'threshold'">Đổi</a>
         </div>
       </div>
@@ -320,8 +320,9 @@
       <!-- ============================================================== -->
       <section class="screen" x-data="thresholdScreen" x-show="$store.app.route === 'threshold'" x-cloak aria-label="Cấu hình ngưỡng">
         <div class="empty" x-show="!initialized">
-          <p x-show="!$store.app.scoresError && !$store.app.thresholdError">Đang nạp điểm của tập kiểm thử…</p>
+          <p x-show="!$store.app.selectionError && !$store.app.thresholdError">Đang nạp điểm chọn ngưỡng…</p>
           <p x-show="$store.app.thresholdError" x-text="'Không đọc được ngưỡng hiện hành: ' + $store.app.thresholdError"></p>
+          <p x-show="$store.app.selectionError" x-text="'Không đọc được điểm chọn ngưỡng: ' + $store.app.selectionError"></p>
         </div>
 
         <div x-show="initialized">
@@ -337,7 +338,7 @@
               </div>
               <div class="slider-actions">
                 <button type="button" class="btn" @click="resetToDefault()"
-                        :disabled="!$store.app.threshold || tau === $store.app.threshold.default">Về τ*</button>
+                        :disabled="!$store.app.threshold || tau === $store.app.threshold.default">Về ngưỡng mặc định</button>
                 <button type="button" class="btn btn-primary" @click="apply()" :disabled="!dirty || applying || !costs.valid">
                   <span x-text="applying ? 'Đang áp dụng…' : 'Áp dụng ngưỡng này'"></span>
                 </button>
@@ -351,14 +352,28 @@
                 <span class="scale-tick" :style="`left: ${(Math.log10(v) - logMin) / (logMax - logMin) * 100}%`" x-text="fmt.tauTick(v)"></span>
               </template>
               <template x-if="$store.app.threshold">
-                <span class="scale-mark" :style="`left: ${(Math.log10($store.app.threshold.default) - logMin) / (logMax - logMin) * 100}%`">▲ τ*</span>
+                <span class="scale-mark" :style="`left: ${(Math.log10($store.app.threshold.default) - logMin) / (logMax - logMin) * 100}%`">▲ mặc định</span>
               </template>
             </div>
             <p class="hint">
-              Thanh trượt theo thang log — vùng quyết định trải từ 0,0005 tới 0,97.
+              Thanh trượt theo thang log — các ngưỡng gợi ý trải từ 0,0001 tới 0,9, chênh nhau hàng chục lần.
               Bàn phím: ← → bước nhỏ, PgUp/PgDn bước lớn, Home/End hai đầu; hoặc gõ số vào ô bên cạnh.
               Mọi con số dưới đây tính ngay trong trình duyệt, không gọi mạng: từ lúc kéo tới lúc vẽ xong
               <span x-text="latencyMs === null ? '—' : fmt.num(latencyMs, 0) + ' ms'"></span> (yêu cầu dưới 200 ms).
+            </p>
+            <p class="hint" x-show="$store.app.threshold">
+              Các ô tính trên <strong>điểm chọn ngưỡng</strong>:
+              <span x-text="fmt.int($store.app.threshold?.selection?.n)"></span> giao dịch huấn luyện,
+              <span x-text="$store.app.threshold?.selection?.n_fraud"></span> gian lận,
+              <span x-text="$store.app.threshold?.selection?.method === 'temporal_forward_chaining' ? 'chấm theo kiểu forward-chaining (mô hình chỉ học quá khứ của mỗi khối)' : 'out-of-fold của cross-validation'"></span>
+              — không phải tập kiểm thử, vì chọn ngưỡng trên tập kiểm thử làm mọi con số báo cáo lạc quan (ML-08).
+              <template x-if="$store.app.summary">
+                <span>
+                  Ngưỡng đang áp dụng, đo trên tập kiểm thử (chỉ để báo cáo): bắt
+                  <span x-text="$store.app.summary.tp + '/' + ($store.app.summary.tp + $store.app.summary.fn)"></span> gian lận,
+                  <span x-text="fmt.int($store.app.summary.alerts_per_day)"></span> cảnh báo/ngày.
+                </span>
+              </template>
             </p>
           </div>
 
@@ -366,7 +381,7 @@
             <div class="tile">
               <div class="tile-label">Cảnh báo mỗi ngày</div>
               <div class="tile-value" x-text="fmt.int(m?.alerts_per_day)"></div>
-              <div class="tile-sub"><span x-text="fmt.int(m?.alerts)"></span> cảnh báo trên tập kiểm thử</div>
+              <div class="tile-sub"><span x-text="fmt.int(m?.alerts)"></span> cảnh báo trên điểm chọn ngưỡng</div>
               <template x-if="deltaInfo('alerts_per_day')">
                 <div class="tile-delta" x-text="deltaInfo('alerts_per_day').text"></div>
               </template>
@@ -390,7 +405,7 @@
             <div class="tile">
               <div class="tile-label">Chi phí mỗi ngày</div>
               <div class="tile-value"><span x-text="fmt.int(perDay(m?.expected_cost))"></span> <span class="tile-unit">EUR</span></div>
-              <div class="tile-sub">tập kiểm thử: <span x-text="fmt.eur(m?.expected_cost)"></span></div>
+              <div class="tile-sub">trên điểm chọn ngưỡng: <span x-text="fmt.eur(m?.expected_cost)"></span></div>
               <template x-if="deltaInfo('expected_cost', { goodIf: 'down', perDay: true, unit: ' EUR' })">
                 <div class="tile-delta" :class="deltaInfo('expected_cost', { goodIf: 'down', perDay: true, unit: ' EUR' }).cls"
                      x-text="deltaInfo('expected_cost', { goodIf: 'down', perDay: true, unit: ' EUR' }).text"></div>
@@ -452,9 +467,9 @@
                     </p>
                     <p class="field-error" x-show="!opt.constraint_satisfied">Không ngưỡng nào đạt ràng buộc — đã lấy ngưỡng gần đạt nhất.</p>
                     <p class="muted small">
-                      Chọn trên out-of-fold của tập huấn luyện (ML-08). Đo lại trên tập kiểm thử: bắt
+                      Chọn trên điểm out-of-fold của tập huấn luyện (ML-08): bắt
                       <span x-text="opt.metrics_at_optimal.tp + '/' + (opt.metrics_at_optimal.tp + opt.metrics_at_optimal.fn)"></span> gian lận,
-                      <span x-text="fmt.int(opt.metrics_at_optimal.alerts_per_day)"></span> cảnh báo/ngày.
+                      <span x-text="fmt.int(opt.metrics_at_optimal.alerts_per_day)"></span> cảnh báo/ngày. Tập kiểm thử không tham gia việc chọn.
                     </p>
                   </div>
                 </template>
@@ -464,8 +479,8 @@
             <div class="card chart-card">
               <h2 class="card-title">Tổng chi phí theo ngưỡng</h2>
               <p class="card-sub">
-                Đường cong: out-of-fold của tập huấn luyện, nơi ngưỡng được chọn. Các ô số phía trên: tập kiểm thử.
-                Cả hai quy ra EUR mỗi ngày trên toàn luồng giao dịch.
+                Đường cong và các ô số phía trên cùng tính trên điểm chọn ngưỡng (out-of-fold của tập huấn luyện),
+                quy ra EUR mỗi ngày trên toàn luồng giao dịch.
               </p>
               <div class="chart-box chart-cost" :class="{ 'is-refreshing': optLoading }">
                 <canvas x-ref="costCanvas" role="img" :aria-label="curveSummary"></canvas>
@@ -480,7 +495,7 @@
 
           <fieldset class="card presets">
             <legend class="card-title">Ngưỡng gợi ý sẵn</legend>
-            <p class="card-sub">Mỗi ngưỡng được chọn trên out-of-fold; số bên phải đo trên tập kiểm thử với tham số chi phí đang nhập (FR-34).</p>
+            <p class="card-sub">Mỗi ngưỡng được chọn trên out-of-fold; số bên phải cũng tính trên điểm chọn ngưỡng, với tham số chi phí đang nhập (FR-34).</p>
             <div class="preset-list">
               <template x-for="p in presets" :key="p.key">
                 <label class="preset" :class="{ 'is-selected': tau === p.value }">
@@ -760,6 +775,59 @@
               </div>
             </div>
           </div>
+
+          <!-- 8 — Theo dõi vận hành (docs/11 M2) -->
+          <div class="card">
+            <h2 class="card-title">Theo dõi vận hành</h2>
+            <p class="card-sub">
+              Giao dịch đã chấm trong hệ thống, theo từng khoảng 6 giờ của dữ liệu, so với kỳ vọng ước lượng trên điểm chọn
+              ngưỡng. Khoảng nào lệch quá dao động mẫu (KTC Wilson 95%) thì được đánh dấu — dấu hiệu ngưỡng cần chỉnh lại.
+            </p>
+            <p class="field-error" x-show="monitoringError" x-text="'Không tải được: ' + monitoringError"></p>
+            <p class="muted" x-show="monitoring && monitoring.overall.n_scored === 0">
+              Chưa có giao dịch nào của mô hình đang chạy — tải CSV, nạp mẫu hoặc phát lại ngày 2.
+            </p>
+            <template x-if="monitoring && monitoring.overall.n_scored > 0">
+              <div>
+                <p class="small">
+                  Kỳ vọng ở τ = <span x-text="fmt.tau(monitoring.threshold)"></span>:
+                  <span x-text="fmt.pct(monitoring.expected.alert_rate, 1)"></span> giao dịch bị cảnh báo
+                  (≈ <span x-text="fmt.int(monitoring.expected.alerts_per_day)"></span>/ngày), precision
+                  <span x-text="fmt.pct(monitoring.expected.precision, 1)"></span>, recall
+                  <span x-text="fmt.pct(monitoring.expected.recall, 1)"></span><span x-show="monitoring.alert_budget_per_day != null">
+                  · ngân sách thẩm định <span x-text="fmt.int(monitoring.alert_budget_per_day)"></span>/ngày</span>.
+                </p>
+                <div class="table-wrap">
+                  <table class="data-table compact">
+                    <thead>
+                      <tr>
+                        <th scope="col">Khoảng (giờ của dữ liệu)</th>
+                        <th scope="col" class="num">Đã chấm</th>
+                        <th scope="col" class="num">Cảnh báo</th>
+                        <th scope="col" class="num">Quy ra/ngày</th>
+                        <th scope="col" class="num">Precision thẩm định</th>
+                        <th scope="col" class="num">Recall theo nhãn</th>
+                        <th scope="col">Đánh dấu</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <template x-for="b in monitoringRows" :key="b.total ? 'total' : b.start_hour">
+                        <tr :class="{ 'row-total': b.total }">
+                          <td x-text="b.total ? 'Tổng' : fmt.int(b.start_hour) + '–' + fmt.int(b.end_hour) + ' h'"></td>
+                          <td class="num" x-text="fmt.int(b.n_scored)"></td>
+                          <td class="num" x-text="fmt.int(b.n_alerts) + ' (' + fmt.pct(b.alert_rate, 1) + ')'"></td>
+                          <td class="num" x-text="fmt.int(b.alerts_per_day)"></td>
+                          <td class="num" x-text="b.n_reviewed ? fmt.pct(b.precision_reviewed, 1) + ' (' + b.n_confirmed + '/' + b.n_reviewed + ')' : '—'"></td>
+                          <td class="num" x-text="b.n_labelled_fraud ? fmt.pct(b.recall_labelled, 1) + ' (' + b.n_caught + '/' + b.n_labelled_fraud + ')' : '—'"></td>
+                          <td :class="b.flags.length ? 'field-error' : 'muted'" x-text="monitoringFlags(b)"></td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+          </div>
         </div>
       </section>
 
@@ -986,7 +1054,7 @@
                 Giá trị cơ sở cộng mọi đóng góp bằng f(x) = <span x-text="fmt.num(exp.margin, 2)"></span>;
                 điểm rủi ro = 1 / (1 + e<sup>−f(x)</sup>) = <span x-text="fmt.score(waterfall.probability)"></span>.
                 Vạch dọc là ngưỡng hiện hành quy về cùng thang (<span x-text="fmt.num(waterfall.tauLogit, 2)"></span>).
-                Giá trị cơ sở cao vì tính theo trọng số huấn luyện (scale_pos_weight ≈ 600).
+                Giá trị cơ sở là điểm xuất phát của mô hình khi chưa xét đặc trưng nào, cùng thang log-odds.
               </p>
               <p class="hint" x-show="waterfall.nPositive < 5">
                 Giao dịch này chỉ có <span x-text="waterfall.nPositive"></span> đặc trưng đẩy điểm lên — mô hình kéo gần hết đặc trưng về phía an toàn.

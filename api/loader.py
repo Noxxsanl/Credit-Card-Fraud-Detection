@@ -66,6 +66,8 @@ class Artifacts:
     amounts_sorted: np.ndarray = field(repr=False, default=None)
     samples_by_id: dict = field(repr=False, default_factory=dict)
     metrics_json: bytes = field(repr=False, default=b"")
+    #: Điểm chọn ngưỡng đã sắp, dạng nhị phân cho UI-D1 (``GET /threshold/oof-scores``, docs/11 M3)
+    selection_payload: bytes = field(repr=False, default=b"")
     #: Từ ngưỡng này trở lên API đề xuất chặn (05 §2) — chọn trên out-of-fold, xem block_threshold_from
     block_threshold: float = 1.0
 
@@ -88,6 +90,11 @@ class Artifacts:
     @property
     def days(self) -> float:
         return float(self.metrics["dataset"]["days"])
+
+    @property
+    def selection_method(self) -> str:
+        """Cách sinh điểm chọn ngưỡng: ``temporal_forward_chaining`` hoặc ``random_cv``."""
+        return str(self.oof.get("method", "random_cv"))
 
     @property
     def model_feature_names(self) -> list[str]:
@@ -193,11 +200,14 @@ def load_artifacts(settings: Settings) -> Artifacts:
         amounts_sorted=np.sort(test_set["Amount"].to_numpy(dtype="float64")),
         samples_by_id={item["id"]: item for item in sample_pool["items"]},
         metrics_json=json.dumps(metrics, ensure_ascii=False, allow_nan=False).encode("utf-8"),
+        selection_payload=art.sorted_scores_payload(oof["y_true"], oof["y_score"],
+                                                    sample_fraction=oof["train_fraction"], days=oof["days"]),
         block_threshold=block_threshold_from(oof, oof_candidates),
     )
-    log.info("Đã nạp hiện vật %s (huấn luyện %s), τ* = %.6f, ngưỡng đề xuất chặn = %.4f (precision ≥ %.0f%% "
-             "trên out-of-fold)", loaded.model_version, loaded.trained_at, loaded.default_threshold,
-             loaded.block_threshold, BLOCK_MIN_PRECISION * 100)
+    log.info("Đã nạp hiện vật %s (huấn luyện %s), τ mặc định = %.6f (%s), ngưỡng đề xuất chặn = %.4f "
+             "(precision ≥ %.0f%% trên điểm chọn ngưỡng %s)", loaded.model_version, loaded.trained_at,
+             loaded.default_threshold, threshold.get("selection_method"), loaded.block_threshold,
+             BLOCK_MIN_PRECISION * 100, loaded.selection_method)
     return loaded
 
 

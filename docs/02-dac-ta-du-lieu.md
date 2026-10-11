@@ -26,8 +26,9 @@ Cách tải: xem [10 — Vận hành và tái lập §2](10-van-hanh-tai-lap.md)
 | `Class` | int64 | 0 hoặc 1 | 1 = gian lận |
 
 **Đơn vị tiền.** Bộ dữ liệu không ghi đơn vị của `Amount`. Đây là giao dịch của chủ thẻ châu Âu,
-nên toàn dự án — tài liệu, notebook, API, giao diện — quy ước **EUR**. Mọi con số chi phí (122,21
-cho một vụ bỏ lọt, 5 cho một cảnh báo) dùng cùng đơn vị đó. Báo cáo phải nêu đây là quy ước, không
+nên toàn dự án — tài liệu, notebook, API, giao diện — quy ước **EUR**. Mọi con số chi phí (115,94
+cho một vụ bỏ lọt — trung bình `Amount` của gian lận trên tập huấn luyện; 5 cho một cảnh báo) dùng cùng
+đơn vị đó. Báo cáo phải nêu đây là quy ước, không
 phải dữ kiện.
 
 ### 2.1 Phân bố nhãn

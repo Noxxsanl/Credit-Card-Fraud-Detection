@@ -4,9 +4,10 @@
  * UI-03 — Cấu hình ngưỡng (docs/07 §5). Màn hình có giá trị học thuật cao nhất.
  *
  * Mọi con số ở các ô tính NGAY trong trình duyệt bằng lib/threshold.mjs (UI-D1), không gọi
- * mạng — đó là thứ bảo đảm AC-A3 (< 200 ms). Đường cong chi phí lấy từ POST /threshold/optimize,
- * đo trên out-of-fold (nơi ngưỡng được chọn), còn các ô đo trên tập kiểm thử; cả hai quy ra
- * EUR/ngày nên cùng thang. Biểu đồ vẽ lại ở mức ưu tiên thấp (useDeferredValue) để thanh trượt
+ * mạng — đó là thứ bảo đảm AC-A3 (< 200 ms). Cả các ô lẫn đường cong chi phí (POST
+ * /threshold/optimize) đều tính trên **điểm chọn ngưỡng** — out-of-fold theo thời gian của tập huấn
+ * luyện — vì kéo thanh trượt là đang chọn ngưỡng (docs/11 M3). Tập kiểm thử chỉ hiện ở một dòng báo
+ * cáo cho ngưỡng ĐANG ÁP DỤNG. Biểu đồ vẽ lại ở mức ưu tiên thấp (useDeferredValue) để thanh trượt
  * và các ô không phải chờ nó.
  */
 
@@ -31,7 +32,8 @@ const scalePos = (v: number) => ((Math.log10(v) - LOG_MIN) / (LOG_MAX - LOG_MIN)
 export function ThresholdScreen() {
   const app = useApp();
   const draft = useThresholdDraft();
-  const { threshold, scores } = app;
+  const { threshold, selection, summary } = app;
+  const scores = selection; // mọi phép tính dưới đây chạy trên điểm chọn ngưỡng
   const { tau, costs, opt, constraintType } = draft;
   const [applying, setApplying] = useState(false);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
@@ -89,7 +91,11 @@ export function ThresholdScreen() {
   if (!draft.initialized || !scores || !threshold || !m || !applied) {
     return (
       <div className="rounded-[10px] border border-dashed border-line-strong bg-surface p-7 text-center">
-        {app.thresholdError ? `Không đọc được ngưỡng hiện hành: ${app.thresholdError}` : "Đang nạp điểm của tập kiểm thử…"}
+        {app.thresholdError
+          ? `Không đọc được ngưỡng hiện hành: ${app.thresholdError}`
+          : app.selectionError
+            ? `Không đọc được điểm chọn ngưỡng: ${app.selectionError}`
+            : "Đang nạp điểm chọn ngưỡng…"}
       </div>
     );
   }
@@ -158,7 +164,7 @@ export function ThresholdScreen() {
   const dFp = delta("fp", "down");
   const dCost = delta("expected_cost", "down", true, " EUR");
   const curveLabel = opt
-    ? `Đường cong chi phí mỗi ngày theo ngưỡng, trục hoành thang log. Cực tiểu tại τ = ${fmt.tau(opt.optimal_threshold)}; tại đó trên tập kiểm thử bắt ${opt.metrics_at_optimal.tp}/${opt.metrics_at_optimal.tp + opt.metrics_at_optimal.fn} gian lận với ${fmt.int(opt.metrics_at_optimal.alerts_per_day)} cảnh báo mỗi ngày.`
+    ? `Đường cong chi phí mỗi ngày theo ngưỡng, trục hoành thang log. Tối ưu tại τ = ${fmt.tau(opt.optimal_threshold)}; tại đó trên điểm chọn ngưỡng bắt ${opt.metrics_at_optimal.tp}/${opt.metrics_at_optimal.tp + opt.metrics_at_optimal.fn} gian lận với ${fmt.int(opt.metrics_at_optimal.alerts_per_day)} cảnh báo mỗi ngày.`
     : "Đường cong chi phí đang tính";
 
   return (
@@ -184,7 +190,7 @@ export function ThresholdScreen() {
           </div>
           <div className="flex gap-2">
             <button type="button" className="btn" disabled={tau === threshold.default} onClick={() => draft.setTau(threshold.default)}>
-              Về τ*
+              Về ngưỡng mặc định
             </button>
             <button type="button" className="btn btn-primary" disabled={!dirty || applying || !costs.valid} onClick={apply}>
               {applying ? "Đang áp dụng…" : "Áp dụng ngưỡng này"}
@@ -210,18 +216,29 @@ export function ThresholdScreen() {
             </span>
           ))}
           <span className="absolute top-[19px] -translate-x-1/2 whitespace-nowrap font-bold text-ink" style={{ left: `${scalePos(threshold.default)}%` }}>
-            ▲ τ*
+            ▲ mặc định
           </span>
         </div>
         <p className="mt-2 text-[12.5px] text-muted">
-          Thanh trượt theo thang log — vùng quyết định trải từ 0,0005 tới 0,97. Bàn phím: ← → bước nhỏ, PgUp/PgDn bước lớn, Home/End hai đầu;
+          Thanh trượt theo thang log — các ngưỡng gợi ý trải từ 0,0001 tới 0,9, chênh nhau hàng chục lần. Bàn phím: ← → bước nhỏ, PgUp/PgDn bước lớn, Home/End hai đầu;
           hoặc gõ số vào ô bên cạnh. Mọi con số dưới đây tính ngay trong trình duyệt, không gọi mạng: từ lúc kéo tới lúc vẽ xong{" "}
           {latencyMs === null ? "—" : `${fmt.num(latencyMs, 0)} ms`} (yêu cầu dưới 200 ms).
+        </p>
+        <p className="mt-1.5 text-[12.5px] text-muted">
+          Các ô tính trên <strong>điểm chọn ngưỡng</strong>: {fmt.int(threshold.selection.n)} giao dịch huấn luyện, {threshold.selection.n_fraud} gian
+          lận, {threshold.selection.method === "temporal_forward_chaining" ? "chấm theo kiểu forward-chaining (mô hình chỉ học quá khứ của mỗi khối)" : "out-of-fold của cross-validation"} —
+          không phải tập kiểm thử, vì chọn ngưỡng trên tập kiểm thử làm mọi con số báo cáo lạc quan (ML-08).
+          {summary && (
+            <>
+              {" "}Ngưỡng đang áp dụng, đo trên tập kiểm thử (chỉ để báo cáo): bắt {summary.tp}/{summary.tp + summary.fn} gian lận,{" "}
+              {fmt.int(summary.alerts_per_day)} cảnh báo/ngày.
+            </>
+          )}
         </p>
       </Card>
 
       <div aria-live="polite" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Tile label="Cảnh báo mỗi ngày" value={fmt.int(m.alerts_per_day)} sub={`${fmt.int(m.alerts)} cảnh báo trên tập kiểm thử`} delta={dAlerts.text} />
+        <Tile label="Cảnh báo mỗi ngày" value={fmt.int(m.alerts_per_day)} sub={`${fmt.int(m.alerts)} cảnh báo trên điểm chọn ngưỡng`} delta={dAlerts.text} />
         <Tile
           label="Gian lận bắt được"
           value={
@@ -242,7 +259,7 @@ export function ThresholdScreen() {
               {fmt.int(perDay(scores, m.expected_cost))} <span className="text-base font-semibold text-muted">EUR</span>
             </>
           }
-          sub={`tập kiểm thử: ${fmt.eur(m.expected_cost)}`}
+          sub={`trên điểm chọn ngưỡng: ${fmt.eur(m.expected_cost)}`}
           delta={dCost.text}
           deltaClass={dCost.cls}
         />
@@ -252,7 +269,7 @@ export function ThresholdScreen() {
         <CostForm />
         <Card
           title="Tổng chi phí theo ngưỡng"
-          sub="Đường cong: out-of-fold của tập huấn luyện, nơi ngưỡng được chọn. Các ô số phía trên: tập kiểm thử. Cả hai quy ra EUR mỗi ngày trên toàn luồng giao dịch."
+          sub="Đường cong và các ô số phía trên cùng tính trên điểm chọn ngưỡng (out-of-fold của tập huấn luyện), quy ra EUR mỗi ngày trên toàn luồng giao dịch."
         >
           <div className={`transition-opacity ${draft.optLoading ? "opacity-55" : ""}`}>
             {curve ? (
@@ -272,7 +289,7 @@ export function ThresholdScreen() {
       <fieldset className="card min-w-0">
         <legend className="float-left card-title w-full p-0">Ngưỡng gợi ý sẵn</legend>
         <p className="card-sub clear-both">
-          Mỗi ngưỡng được chọn trên out-of-fold; số bên phải đo trên tập kiểm thử với tham số chi phí đang nhập (FR-34).
+          Mỗi ngưỡng được chọn trên out-of-fold; số bên phải cũng tính trên điểm chọn ngưỡng, với tham số chi phí đang nhập (FR-34).
         </p>
         <div className="grid gap-1.5">
           {presets.map((p) => {
@@ -361,8 +378,9 @@ function CostForm() {
             {constraintType !== "none" && !opt.constraint_binding && <p className="mb-2">Ràng buộc không chặn: nghiệm cực tiểu chi phí đã thỏa ràng buộc.</p>}
             {!opt.constraint_satisfied && <p className="mb-2 text-[12.5px] font-semibold text-critical-text">Không ngưỡng nào đạt ràng buộc — đã lấy ngưỡng gần đạt nhất.</p>}
             <p className="text-[12.5px] text-muted">
-              Chọn trên out-of-fold của tập huấn luyện (ML-08). Đo lại trên tập kiểm thử: bắt {opt.metrics_at_optimal.tp}/
+              Chọn trên điểm out-of-fold của tập huấn luyện (ML-08): bắt {opt.metrics_at_optimal.tp}/
               {opt.metrics_at_optimal.tp + opt.metrics_at_optimal.fn} gian lận, {fmt.int(opt.metrics_at_optimal.alerts_per_day)} cảnh báo/ngày.
+              Tập kiểm thử không tham gia việc chọn.
             </p>
           </div>
         )}

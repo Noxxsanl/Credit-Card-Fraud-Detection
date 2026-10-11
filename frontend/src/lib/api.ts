@@ -60,6 +60,28 @@ export async function api<T>(path: string, { method = "GET", json, form, signal 
   return body as T;
 }
 
+/** GET trả nhị phân — điểm chọn ngưỡng của GET /threshold/oof-scores (docs/11 M3). */
+export async function apiBinary(path: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  let response: Response;
+  try {
+    response = await fetch(apiBase() + path, { signal });
+  } catch (error) {
+    if ((error as Error).name === "AbortError") throw error;
+    throw new ApiError(0, "NETWORK", `Không kết nối được API tại ${apiBase()}. API đã chạy chưa?`);
+  }
+  if (!response.ok) {
+    let err: { code?: string; message?: string; details?: Record<string, unknown> } = {};
+    try {
+      err = ((await response.json()) as { error?: typeof err })?.error ?? {};
+    } catch {
+      err = {};
+    }
+    throw new ApiError(response.status, err.code ?? `HTTP_${response.status}`,
+      err.message ?? `Lỗi HTTP ${response.status}`, err.details ?? null);
+  }
+  return response.arrayBuffer();
+}
+
 export function query(params: Record<string, string | number | boolean | null | undefined>): string {
   const q = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {

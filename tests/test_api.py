@@ -414,13 +414,18 @@ def test_review_errors(client, tx):
 def test_tc40_changing_the_threshold_changes_the_queue(client, pool):
     """TC-40: đổi ngưỡng rồi gọi lại /transactions — số dòng đổi theo.
 
-    Dùng thư viện mẫu: 34 mẫu legit_hard có điểm trong [τ*, 0,5), chắc chắn rời hàng đợi khi τ = 0,9.
+    Dùng thư viện mẫu: đặt ngưỡng ngay trên điểm thấp nhất của nhóm legit_hard thì ít nhất một mẫu
+    của nhóm đó chắc chắn rời hàng đợi, bất kể ngưỡng mặc định của mô hình đang xuất là bao nhiêu.
     """
     client.post(f"{API}/score/batch", json={"transactions": [i["features"] for i in pool]})
+    lowest_hard = min(i["risk_score"] for i in pool if i["category"] == "legit_hard")
+    low = float(np.nextafter(lowest_hard, 0.0))
+    high = float(np.nextafter(lowest_hard, 1.0))
+    client.put(f"{API}/threshold", json={"value": low})
     before = client.get(f"{API}/transactions").json()["total"]
-    client.put(f"{API}/threshold", json={"value": 0.9})
+    client.put(f"{API}/threshold", json={"value": high})
     after = client.get(f"{API}/transactions").json()
-    assert after["threshold"] == 0.9 and after["total"] < before
+    assert after["threshold"] == high and after["total"] < before
 
 
 # --------------------------------------------------------------------------
@@ -431,6 +436,14 @@ def test_threshold_state_and_update(client, loaded):
     state = client.get(f"{API}/threshold").json()
     assert state["source"] == "artifact" and state["current"] == loaded.default_threshold
     assert state["alternatives"] == loaded.threshold["alternatives"]
+    # docs/11 M1, M3: chính sách ngưỡng mặc định và bộ điểm chọn ngưỡng đi kèm trạng thái
+    assert state["policy"] == loaded.threshold["selection_method"]
+    assert state["constraints"] == loaded.threshold.get("constraints", {})
+    assert state["selection"] == {
+        "method": loaded.selection_method, "n": int(loaded.oof["y_true"].size),
+        "n_fraud": int(loaded.oof["y_true"].sum()), "sample_fraction": loaded.oof["train_fraction"],
+        "days": loaded.oof["days"],
+    }
     updated = client.put(f"{API}/threshold", json={"value": 0.05, "cost_fn": 200, "cost_fp": 3}).json()
     assert updated["source"] == "user" and updated["current"] == 0.05
     assert (updated["cost_fn"], updated["cost_fp"]) == (200, 3)
@@ -453,7 +466,11 @@ def test_tc36_threshold_outside_0_1_is_rejected(client, value):
 
 
 def test_t47_preview_is_fast_and_matches_the_threshold_module(client, loaded):
-    """T-47: /threshold/preview trả trong khoảng 10 ms, số khớp src/threshold.py."""
+    """T-47: /threshold/preview trả trong khoảng 10 ms, số khớp src/threshold.py.
+
+    Từ review 2026-10-10 preview ước lượng trên điểm chọn ngưỡng (out-of-fold), không trên tập kiểm
+    thử — kéo thanh trượt là đang chọn ngưỡng (docs/11 M3).
+    """
     from src.threshold import metrics_at_threshold
 
     timings = []
@@ -464,43 +481,97 @@ def test_t47_preview_is_fast_and_matches_the_threshold_module(client, loaded):
     median = float(np.median(timings))
     print(f"\nT-47: /threshold/preview trung vị {median:.1f} ms, p95 {np.percentile(timings, 95):.1f} ms (qua HTTP)")
     assert median < 25
-    expected = metrics_at_threshold(loaded.y_test, loaded.s_test, 0.999, sample_fraction=loaded.test_fraction)
+    cost_fn, cost_fp = loaded.threshold["cost_false_negative"], loaded.threshold["cost_false_positive"]
+    expected = metrics_at_threshold(loaded.oof["y_true"], loaded.oof["y_score"], 0.999, cost_fn=cost_fn,
+                                    cost_fp=cost_fp, sample_fraction=loaded.oof["train_fraction"], days=loaded.oof["days"])
     assert body == pytest.approx(expected.as_dict())
+    on_test = metrics_at_threshold(loaded.y_test, loaded.s_test, 0.999, sample_fraction=loaded.test_fraction)
+    assert body["tp"] + body["fn"] != on_test.tp + on_test.fn          # không phải tập kiểm thử
     assert client.get(f"{API}/threshold/preview", params={"value": 1.2}).json()["error"]["code"] == "INVALID_THRESHOLD"
 
 
+def _policy_constraint(loaded) -> dict:
+    budget = loaded.threshold.get("constraints", {}).get("alert_budget_per_day")
+    if loaded.threshold["selection_method"] == "min_cost_within_budget" and budget:
+        return {"type": "max_alerts_per_day", "value": budget}
+    return {"type": "none"}
+
+
 def test_t47_optimize_with_default_costs_reproduces_threshold_json(client, loaded):
-    """ML-08: chọn trên out-of-fold → đúng τ* của threshold.json, không phải τ tốt nhất trên test."""
-    body = client.post(f"{API}/threshold/optimize", json={}).json()
+    """ML-08: chọn trên điểm out-of-fold, với chi phí và ràng buộc của chính sách mặc định → đúng ngưỡng
+    mặc định của threshold.json; bỏ ràng buộc → đúng phương án min_expected_cost."""
+    body = client.post(f"{API}/threshold/optimize", json={"constraint": _policy_constraint(loaded)}).json()
     assert body["optimal_threshold"] == loaded.default_threshold
-    assert body["selected_on"] == "out_of_fold" and body["constraint_binding"] is False
-    assert body["metrics_at_optimal"]["tp"] == 77 and len(body["curve"]) >= 150
+    assert body["selected_on"] == "out_of_fold" and body["selection_method"] == loaded.selection_method
+    assert len(body["curve"]) >= 150
+    free = client.post(f"{API}/threshold/optimize", json={}).json()
+    assert free["optimal_threshold"] == loaded.threshold["alternatives"]["min_expected_cost"]
+    assert free["constraint_binding"] is False
 
 
-@pytest.mark.parametrize("constraint, binding", [
-    ({"type": "none"}, False),
-    ({"type": "max_alerts_per_day", "value": 200}, True),      # τ* sinh 287 cảnh báo/ngày
-    ({"type": "max_alerts_per_day", "value": 1000}, False),
-    ({"type": "min_recall", "value": 0.5}, False),
-    ({"type": "min_recall", "value": 0.9}, True),              # τ* chỉ có recall OOF 0,854
+def test_optimize_metrics_are_on_the_selection_scores_not_the_test_set(client, loaded):
+    """docs/11 M3: phản hồi tối ưu không còn chỉ số trên tập kiểm thử."""
+    from src.threshold import metrics_at_threshold
+
+    body = client.post(f"{API}/threshold/optimize", json={}).json()
+    assert "metrics_at_optimal_oof" not in body
+    expected = metrics_at_threshold(loaded.oof["y_true"], loaded.oof["y_score"], body["optimal_threshold"],
+                                    cost_fn=body["cost_fn"], cost_fp=body["cost_fp"],
+                                    sample_fraction=loaded.oof["train_fraction"], days=loaded.oof["days"])
+    assert body["metrics_at_optimal"] == pytest.approx(expected.as_dict())
+
+
+@pytest.mark.parametrize("constraint", [
+    {"type": "none"},
+    {"type": "max_alerts_per_day", "value": 150},
+    {"type": "max_alerts_per_day", "value": 5000},
+    {"type": "min_recall", "value": 0.5},
+    {"type": "min_recall", "value": 0.9},
 ])
-def test_t47_constraint_binding(client, constraint, binding):
-    """T-47: /threshold/optimize báo đúng constraint_binding."""
+def test_t47_constraint_binding(client, constraint):
+    """T-47: /threshold/optimize báo đúng constraint_binding — ràng buộc chặn khi và chỉ khi nghiệm
+    tự do vi phạm nó, và nghiệm có ràng buộc luôn thỏa (nếu thỏa được)."""
+    free = client.post(f"{API}/threshold/optimize", json={}).json()["metrics_at_optimal"]
     body = client.post(f"{API}/threshold/optimize", json={"constraint": constraint}).json()
-    assert body["constraint_binding"] is binding and body["constraint_satisfied"] is True
-    oof = body["metrics_at_optimal_oof"]
+    at = body["metrics_at_optimal"]
     if constraint["type"] == "max_alerts_per_day":
-        assert oof["alerts_per_day"] <= constraint["value"]
-    if constraint["type"] == "min_recall":
-        assert oof["recall"] >= constraint["value"]
+        expect_binding = free["alerts_per_day"] > constraint["value"]
+        assert at["alerts_per_day"] <= constraint["value"]
+    elif constraint["type"] == "min_recall":
+        expect_binding = free["recall"] < constraint["value"]
+        assert at["recall"] >= constraint["value"]
+    else:
+        expect_binding = False
+    assert body["constraint_binding"] is expect_binding and body["constraint_satisfied"] is True
 
 
-def test_ac_a5_cost_parameters_move_the_optimum(client):
+def test_ac_a5_cost_parameters_move_the_optimum(client, loaded):
     """AC-A5: đổi tham số chi phí làm dịch chuyển ngưỡng tối ưu (bậc 5:1 của T-31)."""
+    from src.threshold import pick_threshold
+
     cheap = client.post(f"{API}/threshold/optimize", json={"cost_fn": 25, "cost_fp": 5}).json()
     default = client.post(f"{API}/threshold/optimize", json={}).json()
     assert cheap["optimal_threshold"] > default["optimal_threshold"]
-    assert cheap["optimal_threshold"] == pytest.approx(0.720512330532074)
+    expected = pick_threshold(loaded.oof["y_true"], loaded.oof["y_score"], "min_expected_cost", cost_fn=25,
+                              cost_fp=5, thresholds=loaded.oof_candidates,
+                              sample_fraction=loaded.oof["train_fraction"], days=loaded.oof["days"])
+    assert cheap["optimal_threshold"] == expected
+
+
+def test_oof_scores_endpoint_serves_the_selection_scores(client, loaded):
+    """GET /threshold/oof-scores: đúng các điểm chọn ngưỡng, đã sắp, nhị phân (docs/11 M3)."""
+    from src.artifacts import read_sorted_scores_payload
+
+    response = client.get(f"{API}/threshold/oof-scores")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["x-model-version"] == loaded.model_version
+    decoded = read_sorted_scores_payload(response.content)
+    y, s = loaded.oof["y_true"], np.asarray(loaded.oof["y_score"], dtype="float64")
+    assert np.array_equal(decoded["all"], np.sort(s))
+    assert np.array_equal(decoded["positives"], np.sort(s[y == 1]))
+    assert (decoded["sample_fraction"], decoded["days"]) == (loaded.oof["train_fraction"], loaded.oof["days"])
+    assert len(response.content) < 2_000_000
 
 
 def test_optimize_rejects_bad_input(client):
@@ -617,3 +688,48 @@ def test_nfr01_single_score_latency(client, tx):
     print(f"\nNFR-01: p95 máy chủ {p95_server:.1f} ms, p95 tính cả HTTP {p95_wall:.1f} ms "
           f"(trung vị {np.median(server):.1f} / {np.median(wall):.1f} ms)")
     assert p95_server < 50
+
+
+# --------------------------------------------------------------------------
+# API-16 — theo dõi vận hành (docs/11 M2)
+# --------------------------------------------------------------------------
+
+def test_monitoring_counts_match_the_database_and_flag_against_expectations(client, loaded, pool, clean_db):
+    """Chấm thư viện mẫu kèm nhãn, thẩm định vài cảnh báo, rồi đối chiếu báo cáo với phép đếm trực tiếp."""
+    from src.threshold import metrics_at_threshold
+
+    ids = [score(client, item["features"], sample_id=item["id"]).json()["transaction_id"] for item in pool]
+    tau = client.get(f"{API}/threshold").json()["current"]
+    scored = list(zip(ids, pool))
+    alerts = [(tx_id, item) for tx_id, item in scored if item["risk_score"] >= tau]
+    for tx_id, item in alerts[:10]:
+        decision = "confirmed_fraud" if item["label"] == 1 else "false_alarm"
+        assert client.post(f"{API}/reviews", json={"transaction_id": tx_id, "decision": decision}).status_code == 200
+
+    body = client.get(f"{API}/monitoring", params={"bucket_hours": 48}).json()
+    overall = body["overall"]
+    assert overall["n_scored"] == len(pool)
+    assert overall["n_alerts"] == len(alerts)
+    assert overall["n_reviewed"] == min(10, len(alerts))
+    assert overall["n_confirmed"] == sum(item["label"] for _, item in alerts[:10])
+    assert overall["n_labelled_fraud"] == sum(item["label"] for item in pool)
+    assert overall["n_caught"] == sum(item["label"] for _, item in alerts)
+    assert sum(b["n_scored"] for b in body["buckets"]) == len(pool)
+    lo, hi = overall["alert_rate_ci"]
+    assert lo <= overall["alert_rate"] <= hi
+
+    expected = metrics_at_threshold(loaded.oof["y_true"], loaded.oof["y_score"], tau,
+                                    sample_fraction=loaded.oof["train_fraction"], days=loaded.oof["days"])
+    assert body["expected"]["alert_rate"] == pytest.approx(expected.alerts / loaded.oof["y_true"].size)
+    assert body["expected"]["precision"] == pytest.approx(expected.precision)
+    # Thư viện mẫu cố tình dồn giao dịch "khó" — tỷ lệ cảnh báo của nó cao hơn hẳn luồng thật
+    assert "alerts_above_expected" in overall["flags"]
+
+
+def test_monitoring_is_empty_but_valid_without_transactions(client, clean_db):
+    body = client.get(f"{API}/monitoring").json()
+    assert body["buckets"] == [] and body["overall"]["n_scored"] == 0 and body["overall"]["flags"] == []
+    # Tham số truy vấn sai → 400 INVALID_REQUEST, đúng quy ước chung của API (05 §4)
+    for bad in (0, 49, "x"):
+        response = client.get(f"{API}/monitoring", params={"bucket_hours": bad})
+        assert response.status_code == 400 and response.json()["error"]["code"] == "INVALID_REQUEST", bad

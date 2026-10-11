@@ -53,6 +53,33 @@
     return { all, positives, n: all.length, nPos };
   }
 
+  /** Dựng `prepared` từ hai mảng ĐÃ SẮP tăng dần — mọi điểm và điểm của lớp dương. */
+  function fromSorted(all, positives) {
+    return { all: Float64Array.from(all), positives: Float64Array.from(positives), n: all.length, nPos: positives.length };
+  }
+
+  /**
+   * Đọc payload nhị phân của GET /threshold/oof-scores (src/artifacts.py → sorted_scores_payload):
+   * 32 byte đầu "FDSC", phiên bản, kiểu số (1 = float32, 2 = float64), số điểm, số điểm dương,
+   * tỷ lệ mẫu và số ngày; rồi hai mảng đã sắp. Mỗi float32 nâng lên float64 đúng từng bit, nên
+   * phép so với ngưỡng trùng phía Python (TC-12 kiểm cả đường này).
+   */
+  function decodeSortedScores(buffer) {
+    const view = new DataView(buffer);
+    const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3));
+    if (magic !== "FDSC" || view.getUint8(4) !== 1) throw new Error("Không phải payload điểm đã sắp phiên bản 1");
+    const code = view.getUint8(5);
+    const Kind = code === 1 ? Float32Array : code === 2 ? Float64Array : null;
+    if (!Kind) throw new Error(`Kiểu số không hỗ trợ: ${code}`);
+    const nAll = view.getUint32(8, true);
+    const nPos = view.getUint32(12, true);
+    const sampleFraction = view.getFloat64(16, true);
+    const days = view.getFloat64(24, true);
+    const all = new Kind(buffer, 32, nAll);
+    const positives = new Kind(buffer, 32 + Kind.BYTES_PER_ELEMENT * nAll, nPos);
+    return { prepared: fromSorted(all, positives), sampleFraction, days };
+  }
+
   /** (tp, fp, fn, tn) tại ngưỡng τ — tương đương src.threshold.confusion_counts. */
   function counts(prepared, tau) {
     const alerts = prepared.n - lowerBound(prepared.all, tau);
@@ -81,5 +108,5 @@
     };
   }
 
-  return { lowerBound, prepare, counts, metricsAt };
+  return { lowerBound, prepare, fromSorted, decodeSortedScores, counts, metricsAt };
 });

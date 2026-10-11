@@ -31,9 +31,28 @@ RANDOM_STATE = 42
 TEST_SIZE = 0.2
 CV_FOLDS = 5
 
-# 04 §6.2 — hai giả định A-01, A-02, người dùng đổi được lúc chạy
-DEFAULT_COST_FN = 122.21
+# 04 §6.2 — hai giả định A-01, A-02, người dùng đổi được lúc chạy.
+# A-01: trung bình Amount của gian lận **chỉ trên tập huấn luyện** (378 vụ, sau loại trùng lặp):
+# 115,939… EUR. Trước review con số là 122,21 — trung bình trên dữ liệu thô, gồm cả tập kiểm thử
+# (docs/11 m3). notebook 06 §6.1 kiểm lại con số này mỗi lần chạy.
+DEFAULT_COST_FN = 115.94
 DEFAULT_COST_FP = 5.00
+
+# 04 §6.3 — ràng buộc vận hành. Ngân sách thẩm định là ràng buộc của ngưỡng MẶC ĐỊNH (docs/11 M1):
+# τ mặc định = cực tiểu chi phí trong số các ngưỡng có cảnh báo/ngày ≤ ngân sách.
+DEFAULT_ALERT_BUDGET = 200.0
+DEFAULT_MIN_RECALL = 0.90
+THRESHOLD_POLICY = "min_cost_within_budget"
+
+# docs/11 M2 — ngưỡng chọn trên điểm forward-chaining theo Time, không trên CV ngẫu nhiên
+TEMPORAL_SPLITS = 4
+
+# Cấu hình mô hình cuối — chọn ở notebook 04 §5.8 bằng quy tắc tie-break đặt trước (docs/11 M4):
+# mọi ứng viên XGBoost hoà với cấu hình có PR-AUC CV lặp cao nhất (KTC của hiệu chứa 0), nên chọn
+# chiến lược đơn giản nhất — không xử lý mất cân bằng. Notebook 05–08 đọc từ đây, không tự ghi tên mô hình.
+FINAL_MODEL = "xgboost"
+FINAL_STRATEGY = "none"
+FINAL_RATIO = None
 
 # Bộ dữ liệu trải trong hai ngày (02 §1)
 DATASET_DAYS = 2.0

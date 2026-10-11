@@ -873,3 +873,6 @@ fieldset.presets legend + * { clear: both; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Dòng tổng của bảng theo dõi vận hành (docs/11 M2) */
+.row-total td { font-weight: 600; }

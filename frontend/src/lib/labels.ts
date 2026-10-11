@@ -51,8 +51,9 @@ export const CATEGORY: Record<SampleCategory, string> = {
 
 /** Ngưỡng gợi ý sẵn của UI-03 — khóa của GET /threshold → alternatives, theo thứ tự 07 §5. */
 export const ALTERNATIVES = [
-  { key: "default_naive", label: "Mặc định 0,5", hint: "Không có cơ sở cho dữ liệu mất cân bằng 1:578" },
-  { key: "min_expected_cost", label: "Cực tiểu chi phí kỳ vọng (τ*)", hint: "Chọn trên out-of-fold với chi phí của threshold.json" },
+  { key: "default_naive", label: "0,5 — mặc định của thư viện", hint: "Không có cơ sở cho dữ liệu mất cân bằng 1:600" },
+  { key: "min_cost_within_budget", label: "Chi phí nhỏ nhất trong ngân sách thẩm định (mặc định)", hint: "Cực tiểu chi phí trong các ngưỡng không vượt ngân sách cảnh báo/ngày" },
+  { key: "min_expected_cost", label: "Cực tiểu chi phí, không ràng buộc", hint: "Chọn trên out-of-fold với chi phí của threshold.json — có thể vượt ngân sách" },
   { key: "max_f1", label: "F1 lớn nhất", hint: "Dùng khi không ước lượng được chi phí" },
   { key: "recall_at_least_90", label: "Ràng buộc recall ≥ 90%", hint: "Ngưỡng lớn nhất còn giữ recall 90% trên out-of-fold" },
   { key: "budget_200_alerts", label: "Ngân sách 200 lượt thẩm định/ngày", hint: "Ngưỡng nhỏ nhất còn nằm trong ngân sách trên out-of-fold" },

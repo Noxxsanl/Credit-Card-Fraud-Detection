@@ -77,9 +77,10 @@ không phải hằng số 0,5.
 - Hai điều bộ dữ liệu **không ghi** mà dự án phải quy ước: đơn vị của `Amount` (quy
   ước EUR) và giờ bắt đầu của `Time` (giả định 00:00, nên "giờ 2h" là giờ suy ra) —
   [02 §2, DS-03](02-dac-ta-du-lieu.md).
-- Chi phí bỏ lọt là **giả định**. Tính theo số tiền từng vụ thay cho hằng số 122,21 EUR
-  thì khoản "tiết kiệm" khi hạ ngưỡng 0,5 → τ\* đổi dấu ([04 §6](04-thiet-ke-mo-hinh-ml.md),
-  notebook 06 §6.1).
+- Chi phí bỏ lọt và ngân sách thẩm định là **giả định**. Tính chi phí bỏ lọt theo số tiền từng vụ thay
+  cho hằng số 115,94 EUR thì khoản "tiết kiệm" khi hạ ngưỡng 0,5 → τ\* mất ý nghĩa thống kê (với mô hình
+  trước, nó còn đổi dấu); ngân sách 200 cảnh báo/ngày quyết định ngưỡng mặc định
+  ([04 §6](04-thiet-ke-mo-hinh-ml.md), notebook 06 §6.1, [11](11-review-ml-va-ke-hoach-sua.md)).
 
 ## 4. Các bên liên quan
 

@@ -13,18 +13,26 @@ Bộ dữ liệu gồm 284.807 giao dịch thẻ trong hai ngày, chỉ 492 vụ
 một mô hình luôn trả lời "hợp lệ" đã đạt accuracy 99,83%, nên toàn bộ đồ án đánh giá bằng
 **PR-AUC** và chi phí nghiệp vụ, mọi chỉ số đều kèm **khoảng tin cậy bootstrap**.
 
-So sánh 5 chiến lược xử lý mất cân bằng trên 4 mô hình (20 tổ hợp, kiểm định chéo 5 fold), một nhóm
-cấu hình dẫn đầu hoà nhau ở PR-AUC ≈ 0,855; chọn **XGBoost + `scale_pos_weight`** vì nhanh nhất trong
-nhóm và cho điểm rủi ro mịn nhất. Trên tập kiểm thử chưa từng dùng: **PR-AUC 0,825 [0,747; 0,896]**
-(gấp gần 500 lần đường cơ sở 0,00167), **recall 0,811 [0,737; 0,884]** tại ngưỡng chọn theo chi phí.
-Ngưỡng τ\* = 0,0232 chọn trên dữ liệu out-of-fold, không trên tập kiểm thử.
+So sánh 5 chiến lược xử lý mất cân bằng trên 4 mô hình (20 tổ hợp, kiểm định chéo 5 fold), rồi đặt các
+chiến lược ở **cùng mức cân bằng** (48 tổ hợp) và kiểm lại bằng **CV lặp** với kiểm định t hiệu chỉnh:
+một nhóm cấu hình dẫn đầu hoà nhau ở PR-AUC ≈ 0,855; phần lớn khác biệt giữa trọng số lớp và SMOTE đến từ
+*mức* cân bằng chứ không từ kỹ thuật; và với XGBoost không chiến lược nào hơn việc **không xử lý mất cân
+bằng** — cấu hình cuối được chọn theo một quy tắc đặt trước. Trên tập kiểm thử, chỉ dùng để đo: **PR-AUC
+0,828 [0,747; 0,900]** (gấp gần 500 lần đường cơ sở 0,00167). Ngưỡng mặc định **0,2675** — chi phí nhỏ nhất
+trong ngân sách 200 cảnh báo/ngày, chọn trên điểm forward-chaining theo thời gian của tập huấn luyện — cho
+**recall 0,758 [0,674; 0,842]** với 187 cảnh báo/ngày: đạt tiêu chí 0,75 theo ước lượng điểm, sát nút.
 
-Ba kết quả âm tính hoặc ngược kỳ vọng được báo cáo đầy đủ: tinh chỉnh siêu tham số không hơn cấu hình
-mặc định; SMOTE + Tomek cho kết quả giống SMOTE tới từng bit; và **lợi ích của việc hạ ngưỡng từ 0,5
-xuống τ\* phụ thuộc hoàn toàn vào giả định chi phí** — tính chi phí bỏ lọt bằng số tiền của từng vụ
-thì khoản tiết kiệm đổi dấu. Khi chia theo thời gian (ngày 1 → ngày 2), PR-AUC giảm còn 0,782 và
-precision tại cùng ngưỡng giảm từ 0,67 xuống 0,33. Mô hình được đóng gói thành một hệ thống chấm điểm
-(FastAPI + PostgreSQL + giao diện web), chạy bằng một lệnh `docker compose up`.
+Các kết quả âm tính hoặc ngược kỳ vọng được báo cáo đầy đủ: tinh chỉnh siêu tham số không hơn cấu hình
+mặc định; SMOTE + Tomek cho kết quả giống SMOTE tới từng bit; hai khác biệt "thật" của bản trước không còn
+đứng khi tính phương sai huấn luyện; **lợi ích của việc hạ ngưỡng phụ thuộc giả định chi phí** — tính chi
+phí bỏ lọt bằng số tiền của từng vụ thì khoản tiết kiệm mất ý nghĩa thống kê; và ngân sách thẩm định, không
+phải hàm chi phí, quyết định ngưỡng mặc định. Khi chia theo thời gian (ngày 1 → ngày 2), PR-AUC còn 0,773
+và một ngưỡng trong ngân sách chỉ cho recall khoảng 0,70. Mô hình được đóng gói thành một hệ thống chấm
+điểm (FastAPI + PostgreSQL + giao diện web), chạy bằng một lệnh `docker compose up`, có bảng theo dõi tỷ lệ
+cảnh báo và precision sau khi áp dụng ngưỡng.
+
+Bản này đã sửa theo một lượt review phần học máy ([docs/11](../docs/11-review-ml-va-ke-hoach-sua.md)):
+ngưỡng mặc định, cách chọn ngưỡng, cấu hình mô hình và nhiều con số đã thay đổi so với bản trước.
 
 ---
 
@@ -123,7 +131,10 @@ lận có số tiền ≤ 1 EUR** — chi tiết này quay lại ở mục 8.5. 
 
 **Phát hiện 3 — gian lận dồn vào giờ vắng.** Lúc 2h tỷ lệ gian lận là 1,451% (48/3.308), lúc 10h
 chỉ 0,048% (8/16.548) — chênh 30 lần. Khung 00h–05h chiếm 8,4% lượng giao dịch nhưng 24,3% số vụ gian
-lận. Đó là cơ sở thực nghiệm để đưa giờ trong ngày vào mô hình (với giả định ở mục 1.4).
+lận. Đó là cơ sở thực nghiệm để đưa giờ trong ngày vào mô hình (với giả định ở mục 1.4). Vì đây là một
+**quyết định** về mô hình, nó được kiểm lại chỉ trên tập huấn luyện (notebook 01 §4.1, sau review): 1,365%
+lúc 2h so với 0,045% lúc 10h, vẫn chênh 30 lần, hai khoảng tin cậy Wilson không giao nhau — quyết định không
+dựa vào các dòng của tập kiểm thử.
 
 ![Tỷ lệ gian lận theo giờ](figures/01_hourly_fraud_rate.png)
 
@@ -135,7 +146,8 @@ nén xuống — cùng một cái bẫy như accuracy 99,83%. Chỉ **thứ hạ
 **Phát hiện 5 — không đặc trưng đơn nào tách được hai lớp, nhưng bài toán khả thi.** Mọi cặp phân bố
 vẫn chồng lấn; lớp gian lận dịch sang phía âm và bè rộng gấp 3–5 lần. Trên hình chiếu t-SNE, 85,8% mẫu
 gian lận có đa số láng giềng cùng lớp và tạo thành 2–3 cụm tách hẳn; 4,4% (21 mẫu) nằm lẫn hoàn toàn
-giữa giao dịch hợp lệ — đúng nhóm mà mô hình sẽ bỏ lọt (mục 9.2).
+giữa giao dịch hợp lệ — loại gian lận mà mô hình khó bắt nhất (mục 9.2; với mô hình của bản trước, cả 21
+vụ đều bị bỏ lọt).
 
 ![t-SNE](figures/01_tsne_projection.png)
 
@@ -188,7 +200,7 @@ trưng). Vì thế việc nó được tính trên toàn bộ dữ liệu không
   khác biệt [2].
 - **PR-AUC** (average precision) đo trên precision = TP / (TP + FP) — đúng câu hỏi "trong những giao
   dịch bị gắn cờ, bao nhiêu là gian lận thật". Đường cơ sở của nó là tỷ lệ lớp dương (0,00167), nên con
-  số có ý nghĩa tuyệt đối: PR-AUC 0,825 nghĩa là gấp khoảng 490 lần đoán ngẫu nhiên.
+  số có ý nghĩa tuyệt đối: PR-AUC 0,828 nghĩa là gấp khoảng 495 lần đoán ngẫu nhiên.
 
 ![ROC so với PR](figures/03_roc_vs_pr.png)
 
@@ -201,6 +213,11 @@ Tập kiểm thử chỉ có **95 vụ gian lận**: mỗi vụ bắt hụt làm
 - So sánh hai mô hình hoặc hai ngưỡng bằng **bootstrap theo cặp**: cùng một mẫu cho cả hai, lấy hiệu.
   So hai khoảng tin cậy riêng lẻ bỏ mất tương quan giữa hai bộ điểm và luôn bảo thủ quá mức.
 - **Quy tắc đặt trước:** khoảng tin cậy của hiệu chứa 0 thì **không** tuyên bố bên nào hơn.
+- **Phương sai do huấn luyện.** Bootstrap trên điểm out-of-fold gộp chỉ lấy mẫu lại các dòng của một lần
+  kiểm định chéo, nên bỏ qua việc học trên fold khác thì ra mô hình khác. Các cặp cấu hình cần kết luận được
+  so bằng **CV lặp** (5 × 5 fold, mọi cấu hình gặp cùng các fold) và **kiểm định t hiệu chỉnh** Nadeau–Bengio
+  [17], nhân phương sai của hiệu với `1/k + n_test/n_train` để bù cho việc các fold dùng chung dữ liệu huấn
+  luyện (mục 6.3).
 
 ### 4.3 Chống rò rỉ dữ liệu
 
@@ -218,7 +235,15 @@ code của notebook:
 | 6 | Không dòng nào nằm ở cả hai tập | Kiểm thử trực tiếp |
 | 7 | Mọi bước ngẫu nhiên dùng chung `random_state = 42` | Kiểm thử quét mã |
 
-Kiểm tra tính hợp lý: PR-AUC cao nhất trong cả đồ án là 0,855, nằm trong dải kỳ vọng 0,80–0,87 của
+Bảy điểm trên phần lớn là quét mã, nên có thể vẫn xanh khi có rò rỉ thật. Hai kiểm thử **theo hành vi**
+bổ sung sau review: xáo trộn nhãn thì PR-AUC out-of-fold của cả bốn chiến lược phải ở mức may rủi (dưới 3 lần
+đường cơ sở), và một đối chứng dương — chạy SMOTE **trước** khi chia fold — phải bị phát hiện (PR-AUC vọt quá
+2 lần đường cơ sở). Thêm một phép kiểm trùng gần đúng: 2.218 giao dịch tập kiểm thử có bản sao V1–V28 +
+`Amount` ở tập huấn luyện (chỉ khác `Time`), **không vụ nào là gian lận**; bỏ chúng đi PR-AUC gần như không đổi
+(notebook 05 §6.1).
+
+Kiểm tra tính hợp lý: PR-AUC cao nhất trong cả đồ án là 0,857 (lưới theo mức; 0,859 theo trung bình CV lặp),
+nằm trong dải kỳ vọng 0,80–0,87 của
 đặc tả và cách xa ngưỡng báo động 0,95 (gần như chắc chắn có rò rỉ nếu vượt).
 
 ---
@@ -269,43 +294,56 @@ Mô hình: Logistic Regression, Decision Tree (`max_depth = 6`), Random Forest (
 Ba quyết định thiết kế:
 
 - **Lấy mẫu lại chỉ tới 1 : 10, không 1 : 1.** Cân bằng hoàn toàn làm méo xác suất tiên nghiệm rất
-  mạnh: mô hình trả điểm lệch cao và precision sụp.
+  mạnh: mô hình trả điểm lệch cao và precision sụp. Hệ quả phụ: bảng 20 tổ hợp so `class_weight` cân bằng
+  hoàn toàn (≈ 1 : 1) với SMOTE và undersample 1 : 10 — hai chiến lược khác nhau ở cả loại kỹ thuật lẫn mức
+  cân bằng. Mục 6.4 tách hai yếu tố đó.
 - **Mọi bước nằm trong một pipeline của imbalanced-learn** [6] (`RobustScaler` → lấy mẫu lại → bộ phân
   loại), đánh giá bằng kiểm định chéo phân tầng 5 fold **trên tập huấn luyện**. Lấy mẫu lại ngoài
   pipeline là lỗi rò rỉ phổ biến nhất ở bài toán này: mẫu SMOTE nội suy từ mẫu kiểm định lọt vào tập
   huấn luyện, và mọi chỉ số vọt lên khoảng 0,99.
 - **Một lượt huấn luyện mỗi tổ hợp.** `cross_val_predict` cho điểm out-of-fold của cả 226.980 giao
-  dịch; từ đó tính PR-AUC từng fold (lấy trung bình và độ lệch chuẩn), chọn ngưỡng theo chi phí và đo
-  recall/precision tại ngưỡng đó. Cả lưới chạy 45,7 phút, có điểm lưu để chạy nối tiếp.
+  dịch; từ đó tính PR-AUC từng fold (lấy trung bình và độ lệch chuẩn), Brier, chọn ngưỡng theo chi phí và
+  đo recall/precision tại ngưỡng đó. Cả lưới chạy 45,7 phút ở lần đầu; lần chạy lại 2026-10-10 (máy có tải
+  nền) mất 66,1 phút và cho đúng từng bit các điểm out-of-fold cũ. Điểm lưu chỉ được dùng lại khi dấu vân
+  tay của cấu hình — tham số pipeline, cách chia, dữ liệu, phiên bản thư viện — khớp.
+
+**Hai thí nghiệm bổ sung sau review** ([docs/11](../docs/11-review-ml-va-ke-hoach-sua.md)):
+
+- **Lưới theo mức cân bằng** — ba chiến lược ở **cùng** tỷ lệ dương:âm mục tiêu r ∈ {0,02; 0,1; 0,3; 1}:
+  `class_weight` dùng trọng số lớp dương r × N_âm/N_dương, SMOTE và undersample dùng `sampling_strategy = r`.
+  48 tổ hợp, 86 phút (mục 6.4).
+- **CV lặp** — `RepeatedStratifiedKFold` 5 × 5 fold (Random Forest 3 × 5) cùng `random_state`, so theo cặp
+  bằng kiểm định t hiệu chỉnh Nadeau–Bengio [17] cho các cặp cần kết luận (mục 6.3, 6.8). 81 phút.
 
 ### 6.2 Bảng kết quả 20 tổ hợp
 
-Sắp theo PR-AUC giảm dần. τ\* là ngưỡng cực tiểu chi phí (FN 122,21 EUR, FP 5 EUR — mục 8.1) chọn trên
-điểm out-of-fold của chính tổ hợp đó; recall và precision đo tại τ\*. "Mức điểm" là số giá trị điểm rủi
-ro khác nhau trên 226.980 giao dịch.
+Sắp theo PR-AUC giảm dần. τ\* là ngưỡng cực tiểu chi phí (FN 115,94 EUR, FP 5 EUR — mục 8.1) chọn trên
+điểm out-of-fold **ngẫu nhiên** của chính tổ hợp đó; recall và precision đo tại τ\*. "Brier" là Brier score
+của điểm out-of-fold, nhân 10⁴ — thấp hơn là điểm gần xác suất hơn. "Mức điểm" là số giá trị điểm rủi ro khác
+nhau trên 226.980 giao dịch. Cột giây là của lần chạy lại.
 
-| # | Mô hình | Chiến lược | PR-AUC (TB ± ĐLC) | ROC-AUC | τ\* | Recall | Precision | Cảnh báo/ngày | Mức điểm | Giây |
-|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | XGBoost | class_weight | **0,8549 ± 0,0301** | 0,982 | 0,023 | 0,852 | 0,702 | 287 | 221.674 | 36 |
-| 2 | Random Forest | smote | 0,8549 ± 0,0311 | 0,976 | 0,190 | 0,855 | 0,666 | 303 | 219 | 368 |
-| 3 | Random Forest | smote_tomek | 0,8549 ± 0,0311 | 0,976 | 0,190 | 0,855 | 0,666 | 303 | 219 | 652 |
-| 4 | XGBoost | smote | 0,8529 ± 0,0297 | 0,980 | 0,034 | 0,852 | 0,638 | 316 | 222.236 | 45 |
-| 5 | XGBoost | smote_tomek | 0,8529 ± 0,0297 | 0,980 | 0,034 | 0,852 | 0,638 | 316 | 222.236 | 326 |
-| 6 | XGBoost | none | 0,8514 ± 0,0302 | 0,983 | 0,047 | 0,841 | **0,867** | 229 | 221.544 | 33 |
-| 7 | Random Forest | none | 0,8406 ± 0,0333 | 0,953 | 0,077 | 0,852 | 0,687 | 293 | 207 | 398 |
-| 8 | Random Forest | class_weight | 0,8404 ± 0,0285 | 0,970 | 0,123 | 0,852 | 0,711 | 283 | 200 | 159 |
-| 9 | XGBoost | undersample | 0,7811 ± 0,0691 | 0,982 | 0,868 | 0,836 | 0,689 | 287 | 221.912 | 5 |
-| 10 | Random Forest | undersample | 0,7586 ± 0,0446 | 0,976 | 0,586 | 0,852 | 0,697 | 289 | 269 | 6 |
-| 11 | Logistic Regression | none | 0,7578 ± 0,0305 | 0,977 | 0,017 | 0,855 | 0,541 | 373 | 226.318 | 15 |
-| 12 | Logistic Regression | smote | 0,7572 ± 0,0235 | 0,978 | 0,614 | 0,860 | 0,544 | 373 | 226.308 | 13 |
-| 13 | Logistic Regression | smote_tomek | 0,7572 ± 0,0235 | 0,978 | 0,614 | 0,860 | 0,544 | 373 | 226.308 | 291 |
-| 14 | Logistic Regression | class_weight | 0,7416 ± 0,0294 | 0,980 | 0,972 | 0,857 | 0,505 | 401 | 226.109 | 22 |
-| 15 | Logistic Regression | undersample | 0,7185 ± 0,0206 | 0,983 | 0,617 | 0,857 | 0,415 | 488 | 226.280 | 1 |
-| 16 | Decision Tree | none | 0,6948 ± 0,0374 | 0,871 | 0,500 | 0,780 | 0,886 | 208 | 30 | 24 |
-| 17 | Decision Tree | smote | 0,6404 ± 0,0395 | 0,936 | 0,803 | 0,818 | 0,670 | 288 | 97 | 29 |
-| 18 | Decision Tree | smote_tomek | 0,6404 ± 0,0395 | 0,936 | 0,803 | 0,818 | 0,670 | 288 | 97 | 276 |
-| 19 | Decision Tree | class_weight | 0,3586 ± 0,1167 | 0,878 | 0,994 | 0,796 | 0,368 | 511 | 55 | 26 |
-| 20 | Decision Tree | undersample | 0,2405 ± 0,0529 | 0,918 | 0,750 | 0,839 | 0,264 | 749 | 23 | 1 |
+| # | Mô hình | Chiến lược | PR-AUC (TB ± ĐLC) | ROC-AUC | τ\* | Recall | Precision | Cảnh báo/ngày | Brier ×10⁴ | Mức điểm | Giây |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | XGBoost | class_weight | **0,8549 ± 0,0301** | 0,982 | 0,0232 | 0,852 | 0,702 | 287 | 4,08 | 221.674 | 48 |
+| 2 | Random Forest | smote | 0,8549 ± 0,0311 | 0,976 | 0,190 | 0,854 | 0,666 | 303 | 4,83 | 219 | 484 |
+| 3 | Random Forest | smote_tomek | 0,8549 ± 0,0311 | 0,976 | 0,190 | 0,854 | 0,666 | 303 | 4,83 | 219 | 884 |
+| 4 | XGBoost | smote | 0,8529 ± 0,0297 | 0,980 | 0,0336 | 0,852 | 0,638 | 316 | 3,87 | 222.236 | 53 |
+| 5 | XGBoost | smote_tomek | 0,8529 ± 0,0297 | 0,980 | 0,0336 | 0,852 | 0,638 | 316 | 3,87 | 222.236 | 426 |
+| 6 | XGBoost | none | 0,8514 ± 0,0302 | 0,983 | 0,0468 | 0,841 | 0,866 | 229 | 3,78 | 221.544 | 43 |
+| 7 | Random Forest | none | 0,8406 ± 0,0333 | 0,953 | 0,0767 | 0,852 | 0,687 | 293 | 4,11 | 207 | 603 |
+| 8 | Random Forest | class_weight | 0,8404 ± 0,0285 | 0,969 | 0,123 | 0,852 | 0,711 | 283 | 4,21 | 200 | 212 |
+| 9 | XGBoost | undersample | 0,7811 ± 0,0691 | 0,982 | 0,868 | 0,836 | 0,688 | 287 | 17,05 | 221.912 | 8 |
+| 10 | Random Forest | undersample | 0,7586 ± 0,0446 | 0,976 | 0,586 | 0,852 | 0,697 | 289 | 27,84 | 269 | 9 |
+| 11 | Logistic Regression | none | 0,7578 ± 0,0305 | 0,977 | 0,0167 | 0,854 | 0,541 | 373 | 6,81 | 226.318 | 18 |
+| 12 | Logistic Regression | smote | 0,7572 ± 0,0235 | 0,978 | 0,614 | 0,860 | 0,544 | 373 | 24,13 | 226.308 | 14 |
+| 13 | Logistic Regression | smote_tomek | 0,7572 ± 0,0235 | 0,978 | 0,614 | 0,860 | 0,544 | 373 | 24,13 | 226.308 | 429 |
+| 14 | Logistic Regression | class_weight | 0,7416 ± 0,0294 | 0,980 | 0,972 | 0,857 | 0,505 | 401 | 224,49 | 226.109 | 23 |
+| 15 | Logistic Regression | undersample | 0,7185 ± 0,0206 | 0,982 | 0,617 | 0,857 | 0,415 | 488 | 32,88 | 226.280 | 1 |
+| 16 | Decision Tree | none | 0,6948 ± 0,0374 | 0,870 | 0,500 | 0,780 | 0,886 | 208 | 5,15 | 30 | 49 |
+| 17 | Decision Tree | smote | 0,6404 ± 0,0395 | 0,936 | 0,803 | 0,817 | 0,670 | 288 | 21,24 | 97 | 54 |
+| 18 | Decision Tree | smote_tomek | 0,6404 ± 0,0395 | 0,936 | 0,803 | 0,817 | 0,670 | 288 | 21,24 | 97 | 555 |
+| 19 | Decision Tree | class_weight | 0,3586 ± 0,1167 | 0,878 | 0,994 | 0,796 | 0,368 | 511 | 168,00 | 55 | 47 |
+| 20 | Decision Tree | undersample | 0,2405 ± 0,0529 | 0,918 | 0,750 | 0,839 | 0,264 | 749 | 51,16 | 23 | 2 |
 
 ![PR-AUC và thời gian của 20 tổ hợp](figures/04_grid_heatmap.png)
 
@@ -316,48 +354,69 @@ tới 0,85 (mục 4.1); và **mô hình quyết định nhiều hơn chiến lư
 ### 6.3 Phát hiện 1 — nhóm dẫn đầu hoà nhau, không được xếp hạng
 
 Sáu dòng đầu bảng nằm trong dải 0,8514–0,8549, rộng 0,0035 — chưa tới một phần tám độ lệch chuẩn giữa
-các fold (0,030). Bootstrap hiệu PR-AUC theo cặp trên điểm out-of-fold cho thấy 3 trong 4 cặp so sánh
-có khoảng tin cậy chứa 0. Khác biệt thật duy nhất trong nhóm cao: XGBoost + class_weight hơn
-Random Forest + class_weight **+0,0152 [+0,0056; +0,0270]**. Báo cáo vì vậy nói "một nhóm dẫn đầu",
-không nói "tổ hợp X thắng".
+các fold (0,030). Bản trước dựa vào bootstrap hiệu PR-AUC theo cặp trên điểm out-of-fold **gộp** và tuyên bố
+hai khác biệt "thật". Phép bootstrap đó chỉ lấy mẫu lại các dòng của **một** lần CV nên bỏ qua dao động do
+huấn luyện — học trên fold khác thì mô hình khác. Tính cả phần này bằng CV lặp, khoảng tin cậy rộng ra và
+chứa 0:
+
+| Cặp | Bootstrap OOF gộp (bản trước) | CV lặp, t hiệu chỉnh [17] |
+|---|---|---|
+| XGBoost + class_weight − Random Forest + class_weight | +0,0152 [+0,0056; +0,0270] | +0,0143 [−0,0070; +0,0357] |
+| Random Forest + SMOTE − Random Forest + class_weight | +0,0146 [+0,0076; +0,0220] | +0,0106 [−0,0063; +0,0275] |
+| Chín cấu hình XGBoost so với cấu hình cao nhất (mục 6.8) | — | hiệu từ −0,0077 tới 0, mọi KTC chứa 0 |
+
+Hiệu trung bình gần như giữ cỡ; thứ thay đổi là độ rộng khoảng tin cậy. Báo cáo vì vậy nói "một nhóm dẫn
+đầu", không nói "tổ hợp X thắng", và không còn khác biệt nào trong nhóm cao được tuyên bố.
 
 ![Đường PR của 5 chiến lược](figures/04_pr_curves_strategies.png)
 
-### 6.4 Phát hiện 2 — `class_weight` hay SMOTE: câu trả lời phụ thuộc mô hình
+### 6.4 Phát hiện 2 — `class_weight` hay SMOTE: phần lớn là chuyện *mức* cân bằng
 
-Đặc tả dự báo rằng với mô hình cây, trọng số lớp ngang hoặc nhỉnh hơn SMOTE mà rẻ hơn nhiều. Thực tế:
+Đặc tả dự báo rằng với mô hình cây, trọng số lớp ngang hoặc nhỉnh hơn SMOTE mà rẻ hơn nhiều. Bảng 20 tổ hợp
+(cân bằng hoàn toàn so với 1 : 10) cho:
 
 | Mô hình | class_weight | SMOTE | Chênh | Giây cw | Giây SMOTE | SMOTE đắt hơn |
 |---|---|---|---|---|---|---|
-| XGBoost | **0,8549** | 0,8529 | +0,0020 | 36,1 | 44,7 | 1,24× |
-| Random Forest | 0,8404 | **0,8549** | −0,0145 | 158,7 | 368,1 | 2,32× |
-| Logistic Regression | 0,7416 | **0,7572** | −0,0156 | 21,8 | 13,3 | 0,61× |
-| Decision Tree | 0,3586 | **0,6404** | −0,2818 | 25,8 | 28,6 | 1,11× |
+| XGBoost | **0,8549** | 0,8529 | +0,0020 | 48,1 | 52,8 | 1,10× |
+| Random Forest | 0,8404 | **0,8549** | −0,0145 | 212,4 | 484,2 | 2,28× |
+| Logistic Regression | 0,7416 | **0,7572** | −0,0156 | 23,1 | 14,3 | 0,62× |
+| Decision Tree | 0,3586 | **0,6404** | −0,2818 | 46,8 | 53,7 | 1,15× |
 
-- **Đúng với XGBoost:** hai chiến lược hoà (khoảng tin cậy chứa 0), `scale_pos_weight` rẻ hơn 1,24 lần.
-  Đây là mô hình được chọn, nên dự báo đúng ở chỗ quan trọng nhất.
-- **Sai với Random Forest:** SMOTE hơn thật, +0,0146 [+0,0076; +0,0220], đổi lại đắt gấp 2,3 lần.
-- **Sai với Logistic Regression:** SMOTE vừa hơn vừa rẻ hơn.
-- **Sai hẳn với Decision Tree:** `class_weight="balanced"` làm PR-AUC **sụp từ 0,695 xuống 0,359**, tệ
-  hơn không xử lý gì. Trọng số lớp khoảng 600 kéo các nhánh của cây nông về phía tách lớp dương quá sớm,
-  và với 55 mức điểm thì không còn gì để xếp hạng.
+Lưới theo mức đặt hai kỹ thuật ở **cùng** tỷ lệ dương:âm r (PR-AUC out-of-fold; cột đầu lấy từ lưới chuẩn):
 
-Lấy trung bình gộp cả bốn mô hình (−0,0775) là sai cách trình bày: con số bị Decision Tree kéo lệch.
-Không tính Decision Tree thì trung bình chỉ còn −0,0094.
+| Mô hình | không xử lý | class_weight r = 0,1 | SMOTE r = 0,1 | class_weight r = 1 | SMOTE r = 1 |
+|---|---|---|---|---|---|
+| Decision Tree | 0,6948 | 0,6416 | 0,6404 | 0,3596 | 0,4585 |
+| Logistic Regression | 0,7578 | 0,7595 | 0,7572 | 0,7422 | 0,7454 |
+| Random Forest | 0,8406 | 0,8425 | 0,8549 | 0,8396 | 0,8502 |
+| XGBoost | 0,8514 | 0,8565 | 0,8529 | 0,8549 | 0,8511 |
 
-### 6.5 Phát hiện 3 — SMOTE + Tomek giống SMOTE tới từng bit, mà tốn 40% thời gian lưới
+- **Decision Tree không "sụp vì class_weight" mà vì cân bằng hoàn toàn.** Ở r = 0,1 hai kỹ thuật bằng nhau
+  (0,6416 và 0,6404); ở r = 1 cả hai cùng sụp. Với cây nông, mọi mức cân bằng đều kém không xử lý.
+- **Logistic Regression:** ở r = 0,02 và 0,1, `class_weight` nhỉnh hơn SMOTE (0,7627 so với 0,7605; 0,7595 so
+  với 0,7572) — ngược với bảng chuẩn, nơi khác biệt đến từ so 1 : 1 với 1 : 10.
+- **Random Forest:** SMOTE hơn `class_weight` ở cả bốn mức (+0,010 tới +0,012) trên một lần CV, nhưng CV lặp
+  cho +0,0106 [−0,0063; +0,0275] (mục 6.3) — **không kết luận được**. SMOTE đắt gấp khoảng 2,3 lần.
+- **XGBoost:** tám biến thể `class_weight`/SMOTE nằm trong 0,8511–0,8565, `none` 0,8514. Dự báo của đặc tả
+  đúng ở đây theo nghĩa yếu nhất: không kỹ thuật nào hơn kỹ thuật nào — kể cả hơn không xử lý.
+
+Lấy trung bình gộp cả bốn mô hình (−0,0775) là sai cách trình bày: con số bị Decision Tree kéo lệch, và
+chính Decision Tree là chỗ khác biệt đến từ mức cân bằng.
+
+![PR-AUC theo mức cân bằng](figures/04_ratio_grid.png)
+
+### 6.5 Phát hiện 3 — SMOTE + Tomek giống SMOTE tới từng bit, mà tốn khoảng 40% thời gian lưới
 
 Không chỉ PR-AUC bằng nhau tới bốn chữ số: **mảng điểm out-of-fold của S5 giống hệt S4 tới từng phần
 tử** ở cả bốn mô hình. Bước Tomek không xoá một dòng nào, nhưng tốn **1.089 giây = 18,2 phút**, tức 40%
-của cả lưới 45,7 phút.
+của cả lưới 45,7 phút ở lần chạy đầu (lần chạy lại có tải nền: 28,2 trong 66,1 phút, 42,6%).
 
 Vì sao? Kiểm lại trên fold 1: dữ liệu gốc **có** cặp Tomek — trước SMOTE, `TomekLinks` tìm được 21 cặp
 (xoá 42 dòng, trong đó 21 vụ gian lận); sau SMOTE còn 0. Chính SMOTE xoá chúng: mỗi vụ gian lận thật
 được dùng làm gốc để sinh khoảng 59 điểm tổng hợp trên các đoạn nối nó với láng giềng cùng lớp, nên
 láng giềng gần nhất của nó trở thành một điểm gian lận tổng hợp — không còn cặp khác lớp nào là láng
 giềng gần nhất *của nhau*. `SMOTETomek` chạy SMOTE trước, Tomek sau, nên ở tỷ lệ này bước Tomek luôn
-vô tác dụng. Kết quả âm tính này được giữ trong bảng vì tự nó là một phát hiện; các lần chạy lại về sau
-nên bỏ S5.
+vô tác dụng. Kết quả âm tính này được giữ trong bảng vì tự nó là một phát hiện; lưới theo mức đã bỏ S5.
 
 ### 6.6 Phát hiện 4 — độ mịn của điểm rủi ro loại Random Forest
 
@@ -371,21 +430,38 @@ ngưỡng hoặc không đổi gì, hoặc nhảy hàng chục cảnh báo một
 ### 6.7 Phát hiện 5 — undersampling nhanh nhất nhưng kém nhất và bất ổn nhất
 
 Đưa lớp dương lên 1 : 10 bằng cách bỏ khoảng 98% giao dịch hợp lệ làm mọi mô hình huấn luyện trong
-1–6 giây, nhưng PR-AUC giảm ở cả
-bốn mô hình, và độ lệch chuẩn giữa các fold của XGBoost tăng gấp đôi (0,069 so với 0,030): mô hình
-thấy quá ít ví dụ về giao dịch hợp lệ "khó". Recall tại τ\* vẫn cao (0,84–0,86) nhưng precision thấp
-nhất ở Logistic Regression (0,415) và Decision Tree (0,264).
+1–10 giây, nhưng PR-AUC giảm ở cả bốn mô hình, và độ lệch chuẩn giữa các fold của XGBoost tăng gấp đôi
+(0,069 so với 0,030): mô hình thấy quá ít ví dụ về giao dịch hợp lệ "khó". Lưới theo mức xác nhận: undersample
+kém nhất ở mọi mô hình và mọi mức r, và càng kém khi r tăng — XGBoost từ 0,833 (r = 0,02) xuống 0,744 (r = 1),
+Decision Tree từ 0,474 xuống 0,024. Recall tại τ\* vẫn cao (0,84–0,86) nhưng precision thấp nhất ở Logistic
+Regression (0,415) và Decision Tree (0,264).
 
 ![Chi phí kỳ vọng của các chiến lược](figures/04_cost_of_strategies.png)
 
-### 6.8 Lựa chọn cho các bước sau
+### 6.8 Lựa chọn cho các bước sau: XGBoost, không xử lý mất cân bằng
 
-**XGBoost + `class_weight` (`scale_pos_weight` ≈ 599,5).** Ba lý do, theo thứ tự quan trọng:
+Bản trước chọn XGBoost + `class_weight` "vì nhanh nhất trong nhóm và cho điểm rủi ro mịn nhất". Cả hai vế
+sai so với chính bảng ở mục 6.2 — `none` nhanh hơn (43 so với 48 giây), `smote` có nhiều mức điểm hơn (222.236
+so với 221.674) — và không có số liệu nào cho thấy `class_weight` hơn `none`. Sau review, cấu hình cuối được
+chọn bằng một **quy tắc đặt trước** (đề xuất sau khi đã thấy bảng 20 tổ hợp, nhưng trước khi chạy CV lặp và
+lưới theo mức, và không nhìn tập kiểm thử), áp lên họ XGBoost — Random Forest bị loại vì độ mịn điểm (6.6):
 
-1. **Nằm trong nhóm PR-AUC cao nhất** (0,8549); không cấu hình nào chứng minh được là hơn nó.
-2. **Nhanh hơn 10,2 lần** Random Forest + SMOTE cùng điểm số (36 giây so với 368 giây) — quan trọng vì
-   bước sau tìm kiếm siêu tham số trên chính cấu hình này.
-3. **Hơn 1.000 lần số mức điểm** so với Random Forest, tức còn chỗ thật để chọn ngưỡng.
+1. **Chất lượng xếp hạng là điều kiện cần.** Ứng viên là mọi cấu hình XGBoost của hai lưới có PR-AUC CV trong
+   vòng 0,01 của cấu hình cao nhất; cấu hình nào có hiệu so với cấu hình cao nhất theo CV lặp mà KTC 95% chứa 0
+   thì *hoà*.
+2. **Trong nhóm hoà, chiến lược đơn giản nhất**: `none` < `class_weight` < `undersample` < `smote`.
+3. Rồi Brier thấp nhất trên OOF; 4. rồi ít cảnh báo/ngày nhất tại τ\* của chính nó.
+
+**Kết quả.** Chín cấu hình XGBoost ứng viên; theo CV lặp 5 × 5 fold, cấu hình có trung bình cao nhất là
+`class_weight` r = 0,3 (0,8589). **Cả chín hoà với nó** — hiệu xa nhất −0,0077 [−0,0181; +0,0026], của `none`
+là −0,0037 [−0,0119; +0,0046]. Bước 2 chọn **`none`**: XGBoost với cấu hình khởi điểm, không trọng số lớp,
+không lấy mẫu lại.
+
+Với XGBoost, trọng số lớp và SMOTE chủ yếu **dịch điểm rủi ro** chứ không đổi **thứ tự xếp hạng**, mà PR-AUC
+chỉ đo thứ tự. Bỏ chúng đi không mất gì đo được, và được hai thứ: điểm gần xác suất hơn (Brier OOF 3,78·10⁻⁴ so
+với 4,08·10⁻⁴) và ít cảnh báo giả hơn tại τ\* (precision OOF 0,866 so với 0,702). Kết luận trung tâm của phần
+này vì vậy là: **với mô hình boosting trên dữ liệu này, xử lý mất cân bằng không đem lại lợi ích đo được** — việc
+quyết định là chọn ngưỡng (mục 8).
 
 ---
 
@@ -393,10 +469,11 @@ nhất ở Logistic Regression (0,415) và Decision Tree (0,264).
 
 ### 7.1 Tinh chỉnh siêu tham số — một kết quả âm tính
 
-`RandomizedSearchCV`, 30 lần thử × 5 fold, `scoring = "average_precision"`, trên pipeline đã chọn;
+`RandomizedSearchCV`, 30 lần thử × 5 fold, `scoring = "average_precision"`, trên họ XGBoost;
 không gian tìm gồm `n_estimators` 200–800, `max_depth` 3–8, `learning_rate` 0,01–0,3 (thang log),
-`subsample`, `colsample_bytree` 0,6–1, `min_child_weight` 1–10 và `scale_pos_weight` ∈ {1, 10, 100, 599,5}.
-Chạy 19,8 phút.
+`subsample`, `colsample_bytree` 0,6–1, `min_child_weight` 1–10 và `scale_pos_weight` ∈ {1, 10, 100, 599,5}
+— mức 1 chính là không xử lý mất cân bằng. Chạy 19,8 phút (13,2 phút ở lần chạy lại 2026-10-11, cho đúng
+các con số cũ).
 
 | Hạng | PR-AUC CV | ĐLC | PR-AUC train | n_estimators | max_depth | learning_rate | scale_pos_weight |
 |---|---|---|---|---|---|---|---|
@@ -406,34 +483,48 @@ Chạy 19,8 phút.
 | 4 | 0,8531 | 0,0311 | 1,0000 | 330 | 7 | 0,048 | 10 |
 | 5 | 0,8530 | 0,0289 | 0,9998 | 676 | 6 | 0,020 | 100 |
 
-- Cấu hình đầu bảng (0,8538) **thấp hơn** cấu hình mặc định của mục 6 (0,8549). Năm cấu hình đầu cách
-  nhau 0,0008 trong khi độ lệch chuẩn giữa các fold là 0,03: bề mặt mục tiêu phẳng.
-- `scale_pos_weight` gần như không ảnh hưởng PR-AUC: nó dịch điểm rủi ro chứ không đổi thứ tự.
+- Cấu hình đầu bảng (0,8538) chỉ hơn cấu hình cuối của mục 6.8 (XGBoost + `none`, 0,8514) 0,0024 —
+  chưa bằng một phần mười độ lệch chuẩn giữa các fold (0,03). Năm cấu hình đầu cách nhau 0,0008: bề mặt mục
+  tiêu phẳng.
+- `scale_pos_weight` gần như không ảnh hưởng PR-AUC (trung bình 0,846 / 0,845 / 0,844 / 0,841 ở mức
+  1 / 10 / 100 / 599,5): nó dịch điểm rủi ro chứ không đổi thứ tự — cùng kết luận với mục 6.8.
 - PR-AUC trên tập huấn luyện bằng 1,0 ở mọi cấu hình tốt — mô hình khớp hoàn toàn tập huấn luyện;
   khoảng cách 0,15 với điểm kiểm định là bình thường với boosting nhiều cây và không làm giảm điểm
   kiểm định.
 
 **Quy tắc đặt trước:** cấu hình tinh chỉnh chỉ thay cấu hình mặc định nếu bootstrap hiệu PR-AUC theo
-cặp trên điểm out-of-fold không chứa 0. Kết quả **−0,0006 [−0,0087; +0,0072]** → **giữ cấu hình mặc
-định**. Lựa chọn được chốt trên tập huấn luyện, trước khi nhìn tập kiểm thử.
+cặp trên điểm out-of-fold không chứa 0. So với XGBoost + `none`: **+0,0034 [−0,0028; +0,0097]** (tinh chỉnh
+thắng 84% số lần lặp, nhưng khoảng tin cậy chứa 0) → **giữ cấu hình mặc định**. Lựa chọn được chốt trên tập
+huấn luyện, trước khi nhìn tập kiểm thử; tập kiểm thử sau đó cho −0,0092 [−0,0228; +0,0028], không đảo lại
+quyết định. (Bản trước, so với XGBoost + `class_weight`, cho −0,0006 [−0,0087; +0,0072] và cùng kết luận.)
 
 ### 7.2 Kết quả trên tập kiểm thử
 
-Huấn luyện lại trên toàn bộ tập huấn luyện, đo **một lần** trên 56.746 giao dịch (95 gian lận) tại
-τ\* = 0,0232 chọn trên out-of-fold:
+Huấn luyện lại trên toàn bộ tập huấn luyện, đo **một lần** trên 56.746 giao dịch (95 gian lận). Chỉ số phụ
+thuộc ngưỡng đo tại **ngưỡng mặc định 0,2675**, chọn ở mục 8.2 trên điểm forward-chaining của tập huấn luyện:
 
 | Chỉ số | Giá trị [KTC 95%] | Tiêu chí nghiệm thu |
 |---|---|---|
-| PR-AUC | **0,825** [0,747; 0,896] | AC-M1: ≥ 0,75 — đạt |
-| ROC-AUC | 0,977 [0,961; 0,991] | |
-| Recall tại τ\* | **0,811** [0,737; 0,884] — bắt 77/95 vụ | AC-M2: ≥ 0,75 — đạt |
-| Precision tại τ\* | 0,670 [0,600; 0,752] — 38 cảnh báo giả | |
-| F1 tại τ\* | 0,733 | |
+| PR-AUC | **0,828** [0,747; 0,900] | AC-M1: ≥ 0,75 — đạt theo ước lượng điểm |
+| ROC-AUC | 0,975 [0,958; 0,991] | |
+| Recall tại ngưỡng mặc định | **0,758** [0,674; 0,842] — bắt 72/95 vụ | AC-M2: ≥ 0,75 — đạt theo ước lượng điểm, sát nút |
+| Precision tại ngưỡng mặc định | 0,960 [0,915; 1,000] — 3 cảnh báo giả | |
+| F1 tại ngưỡng mặc định | 0,847 | |
+| Cảnh báo/ngày trên toàn luồng | 187 (ngân sách 200) | |
 | Đường cơ sở PR-AUC | 0,00167 | |
 
-**Cần nói rõ:** cận dưới của PR-AUC (0,747) và của recall (0,737) đều **sát dưới 0,75**. Hai tiêu chí
-đạt theo ước lượng điểm, không đạt "chắc chắn" theo khoảng tin cậy — hệ quả trực tiếp của việc chỉ có
-95 mẫu dương.
+**Cần nói rõ:** cận dưới của PR-AUC (0,747) nằm ngay dưới 0,75; recall đạt đúng 72/95 — một vụ ít hơn là
+trượt — và cận dưới của nó là 0,674. Hai tiêu chí đạt theo ước lượng điểm, không đạt "chắc chắn" theo khoảng
+tin cậy — hệ quả trực tiếp của việc chỉ có 95 mẫu dương. AC-M2 còn có điều kiện: nó đứng dưới hai giả định
+nghiệp vụ chưa được xác nhận (mỗi vụ lọt tốn 115,94 EUR, ngân sách 200 cảnh báo/ngày) và trên tập kiểm thử
+chia ngẫu nhiên; trên một ngày mới, ngưỡng trong ngân sách chỉ cho recall khoảng 0,70 (mục 8.2). Tại τ\*
+không ràng buộc (0,0191) recall là 0,821, nhưng tải 242 cảnh báo/ngày vượt ngân sách.
+
+**Tập kiểm thử chỉ để đo.** Nó được mở ở nhiều notebook — 03 (mô hình cơ sở), 05 (mô hình cuối, bản tinh
+chỉnh, chia theo thời gian), 06 (các phương án ngưỡng), 06b, 07 (SHAP, phân tích lỗi), 08 (xuất hiện vật) —
+nhưng không lần nào để **chọn**: cấu hình chốt bằng CV trên tập huấn luyện (mục 6.8, 7.1), ngưỡng chốt trên
+điểm forward-chaining (mục 8.2), và các phân tích trên tập kiểm thử sau đó chỉ để mô tả. Bản trước viết "tập
+kiểm thử chưa từng dùng" — câu đó sai và đã bỏ.
 
 ![Đường PR và ma trận nhầm lẫn trên tập kiểm thử](figures/05_test_pr_and_confusion.png)
 
@@ -443,17 +534,20 @@ Chia ngẫu nhiên trộn giao dịch của cả hai ngày vào cả hai tập. 
 khứ và chấm tương lai. Bảng đối chiếu (AC-M7), ngưỡng của từng cách chia chọn trên out-of-fold của
 chính tập huấn luyện đó:
 
-| Cách chia | Train (gian lận) | Test (gian lận) | PR-AUC test [KTC] | Recall | Precision | FP |
-|---|---|---|---|---|---|---|
-| Ngẫu nhiên 80/20 | 226.980 (378) | 56.746 (95) | 0,825 [0,747; 0,896] | 0,811 | 0,670 | 38 |
-| Ngẫu nhiên, train thu nhỏ bằng ngày 1 (đối chứng) | 144.236 (240) | 56.746 (95) | 0,825 [0,749; 0,896] | 0,800 | 0,826 | 16 |
-| **Ngày 1 → ngày 2** | 144.236 (272) | 139.490 (201) | **0,782** [0,728; 0,836] | 0,836 | **0,332** | **338** |
+| Cách chia | Train (gian lận) | Test (gian lận) | PR-AUC test [KTC] | τ\* (OOF ngẫu nhiên) | Recall | Precision | FP |
+|---|---|---|---|---|---|---|---|
+| Ngẫu nhiên 80/20 | 226.980 (378) | 56.746 (95) | 0,828 [0,747; 0,900] | 0,0468 | 0,789 | 0,862 | 12 |
+| Ngẫu nhiên, train thu nhỏ bằng ngày 1 (đối chứng) | 144.236 (240) | 56.746 (95) | 0,817 [0,740; 0,887] | 0,0276 | 0,800 | 0,835 | 15 |
+| **Ngày 1 → ngày 2** | 144.236 (272) | 139.490 (201) | **0,773** [0,724; 0,827] | 0,0156 | 0,831 | **0,365** | **291** |
 
-Dòng đối chứng tách được hai nguyên nhân: bớt dữ liệu huấn luyện xuống bằng cỡ ngày 1 chỉ làm PR-AUC
-giảm 0,0004; phần còn lại, **−0,043, là do thời gian**. Khoảng tin cậy PR-AUC của hai cách chia chồng
-lấn nhau, nhưng tại ngưỡng cố định thì khác biệt rõ: ngày 2 sinh cảnh báo giả gấp nhiều lần, precision
-giảm còn 0,33. Tỷ lệ gian lận cũng đổi từ 0,189% (ngày 1) xuống 0,144% (ngày 2). Kết luận cho triển
-khai: **ngưỡng phải được hiệu chỉnh lại định kỳ**, không đặt một lần rồi để đó.
+Dòng đối chứng tách được hai nguyên nhân: bớt dữ liệu huấn luyện xuống bằng cỡ ngày 1 làm PR-AUC giảm
+0,011; phần còn lại, **−0,044, là do thời gian**. Khoảng tin cậy PR-AUC của hai cách chia chồng lấn nhau,
+nhưng tại ngưỡng thì khác biệt rõ: ngưỡng chọn trên CV ngẫu nhiên của ngày 1 (0,0156) thấp gấp ba ngưỡng
+của cách chia ngẫu nhiên, và ngày 2 sinh 458 cảnh báo trong một ngày, precision còn 0,365 — tỷ lệ báo động
+giả trên giao dịch hợp lệ gấp khoảng 10 lần. Tỷ lệ gian lận cũng đổi từ 0,189% (ngày 1) xuống 0,144% (ngày
+2). Kết luận cho triển khai: **ngưỡng phải được chọn theo cách mô phỏng tương lai và theo dõi lại định kỳ**,
+không đặt một lần rồi để đó — mục 8.2 chọn ngưỡng trên điểm forward-chaining và kiểm đúng giao thức này trên
+ngày 2; API theo dõi tỷ lệ cảnh báo và precision theo thời gian (mục 10).
 
 ![Chia theo thời gian](figures/05_temporal_split.png)
 
@@ -465,9 +559,9 @@ giao dịch hợp lệ; sai số tái tạo dùng làm điểm bất thường.
 | Mô hình | PR-AUC | ROC-AUC |
 |---|---|---|
 | Autoencoder (không dùng nhãn) | 0,329 | 0,949 |
-| XGBoost + class_weight | **0,825** | 0,977 |
+| XGBoost, mô hình cuối | **0,828** | 0,975 |
 
-Hiệu PR-AUC +0,496 [+0,394; +0,583], XGBoost thắng ở 100% số lần lặp. Autoencoder **có** nhận ra gian
+Hiệu PR-AUC +0,499 [+0,393; +0,588], XGBoost thắng ở 100% số lần lặp. Autoencoder **có** nhận ra gian
 lận là bất thường — 93/95 vụ có sai số tái tạo trên trung vị, sai số của V17 ở lớp gian lận gấp gần
 1.300 lần lớp hợp lệ — nhưng không phân biệt được giao dịch hợp lệ hiếm gặp với gian lận: trong 1%
 giao dịch "bất thường" nhất (568 giao dịch) chỉ 74 là gian lận. Nó thua vì bỏ qua 378 nhãn có sẵn — bài
@@ -475,8 +569,8 @@ toán có nhãn thì học có giám sát thắng.
 
 ### 7.5 Tái lập
 
-Chạy lại 9 notebook 01 → 08, mỗi notebook một kernel mới, tổng 71 phút: PR-AUC trước và sau
-**0,8252465892 → 0,8252465892, lệch 0** (dung sai 0,001, AC-M5); 12 con số chính, τ\*, mọi bảng
+Chạy lại 9 notebook 01 → 08, mỗi notebook một kernel mới, tổng 46,5 phút (2026-10-11, mô hình cuối): PR-AUC
+trước và sau **0,8278893033 → 0,8278893033, lệch 0** (dung sai 0,001, AC-M5); 12 con số chính, τ\*, mọi bảng
 `reports/*.csv` và mọi hình trùng hoàn toàn. Ba giới hạn: lượt kiểm không chạy lại lưới 20 tổ hợp và
 tìm kiếm siêu tham số (notebook đọc điểm lưu); mới kiểm trên một máy 12 lõi — XGBoost `hist` cho điểm
 lệch nhẹ theo số luồng **khi huấn luyện**; và trong container Linux, điểm chấm lệch 1 ulp float32 ở
@@ -496,198 +590,237 @@ Hàm chi phí kỳ vọng (theo Elkan [11]):
 
   **Chi phí(τ) = c_FN × FN(τ) + c_FP × FP(τ)**
 
-với hai giả định nghiệp vụ, người dùng đổi được lúc chạy:
+với ba giả định nghiệp vụ, người dùng đổi được lúc chạy:
 
 | Mã | Giả định | Giá trị | Nguồn |
 |---|---|---|---|
-| A-01 | Bỏ lọt một vụ gian lận mất khoảng số tiền trung bình của một vụ | c_FN = 122,21 EUR | Trung bình `Amount` của gian lận trên dữ liệu **thô** |
+| A-01 | Bỏ lọt một vụ gian lận mất khoảng số tiền trung bình của một vụ | c_FN = 115,94 EUR | Trung bình `Amount` của gian lận **trên tập huấn luyện** (378 vụ). Bản trước dùng 122,21 — trung bình trên dữ liệu thô, gồm cả tập kiểm thử |
 | A-02 | Thẩm định một cảnh báo tốn | c_FP = 5 EUR | Giả định |
+| A-03 | Đội thẩm định xử lý tối đa 200 cảnh báo mỗi ngày | ngân sách 200/ngày | Giả định (04 §6.3) |
 
-Tỷ lệ c_FN : c_FP ≈ 24,4 : 1. Mục 8.4 kiểm độ nhạy theo tỷ lệ này; mục 8.5 kiểm chính dạng của hàm
-chi phí.
+Tỷ lệ c_FN : c_FP ≈ 23,2 : 1. Mục 8.4 kiểm độ nhạy theo tỷ lệ này; mục 8.5 kiểm chính dạng của hàm chi phí.
+**Cả ba giả định chưa được nghiệp vụ xác nhận** — mọi kết luận "rẻ hơn", "đạt" ở mục này đứng dưới chúng.
 
 Số cảnh báo quy về **cảnh báo mỗi ngày trên toàn luồng giao dịch** — con số mà người quản lý vận hành
-quan tâm: tập kiểm thử là 20% của hai ngày, nên nhân 2,5.
+quan tâm: tập kiểm thử là 20% của hai ngày nên nhân 2,5; điểm chọn ngưỡng (mục 8.2) là 80% luồng trải trong
+1,45 ngày.
 
-### 8.2 Chọn ngưỡng trên out-of-fold
+### 8.2 Chọn ngưỡng ở đâu: điểm forward-chaining, trong ngân sách thẩm định
 
-Ngưỡng là một phép **chọn**, nên không được làm trên tập kiểm thử: chọn rồi đo trên cùng tập làm mọi
-con số lạc quan hơn thực tế. Ngưỡng chọn trên **điểm out-of-fold** của 226.980 giao dịch huấn luyện
-(378 gian lận); tập kiểm thử chỉ đo kết quả tại ngưỡng đã chốt.
+Ngưỡng là một phép **chọn**, nên không được làm trên tập kiểm thử: chọn rồi đo trên cùng tập làm mọi con số
+lạc quan hơn thực tế (ML-08). Bản trước chọn trên điểm out-of-fold của CV **ngẫu nhiên**. Nhưng ngưỡng nhạy
+với độ lệch thời gian hơn PR-AUC nhiều (mục 7.3), nên từ review (docs/11 M2) ngưỡng được chọn trên **điểm
+forward-chaining**: sắp tập huấn luyện theo `Time`, chia 5 khối liên tiếp; khối k được chấm bởi mô hình chỉ học
+các khối 1 … k−1. Kết quả là 181.584 điểm (249 gian lận, khối đầu không có điểm), trải 1,45 ngày, PR-AUC 0,783
+— thấp hơn OOF ngẫu nhiên (0,849) đúng bằng cái giá của việc chấm "tương lai".
 
-Ngưỡng ứng viên là **mọi điểm out-of-fold khác nhau** (khoảng 222.000), không phải lưới 200 điểm của
-thiết kế ban đầu. Với τ\* hai cách gần trùng (0,02317 so với 0,02321), nhưng lưới thô làm hỏng tiêu chí
-ngân sách: nó chỉ tìm được 172,5 trong 200 cảnh báo/ngày cho phép và mất 8 điểm recall.
+Ngưỡng ứng viên là **mọi điểm khác nhau** (175.627), không phải lưới 200 điểm của thiết kế ban đầu: lưới thô
+trượt qua vùng đuôi, và với ràng buộc ngân sách nó chọn 0,4255 thay vì 0,2675.
 
-**Kết quả: τ\* = 0,02317.** Trên out-of-fold, chi phí cực tiểu 7.407 EUR; tại 0,5 là 8.114 EUR (+9,5%);
-không chặn gì là 46.195 EUR. **Đáy chi phí phẳng:** mọi τ trong [0,013; 0,140] đều nằm trong 5% của
-cực tiểu.
+| Ngưỡng (chọn trên điểm forward-chaining) | τ | Cảnh báo/ngày | Recall | Chi phí |
+|---|---|---|---|---|
+| τ\* — cực tiểu chi phí, không ràng buộc | 0,0191 | 297 | 0,827 | 5.675 EUR |
+| **Mặc định — chi phí nhỏ nhất trong các ngưỡng ≤ 200 cảnh báo/ngày** | **0,2675** | **198** | **0,759** | **7.156 EUR (+26%)** |
+| 0,5 | 0,5 | 184 | 0,747 | 7.439 EUR (+31%) |
+| Không chặn gì | — | 0 | 0 | 28.869 EUR |
 
-![Đường cong chi phí trên out-of-fold](figures/06_cost_curve.png)
+**Đáy chi phí phẳng** — mọi τ trong [0,0097; 0,0462] nằm trong 5% cực tiểu — nhưng **cả đáy nằm bên kia ngân
+sách**: muốn vào đáy phải chấp nhận khoảng 300 cảnh báo/ngày. Bản trước đã kết luận "trong đáy phẳng, chọn theo
+năng lực thẩm định" nhưng vẫn xuất τ\* tự do (287 cảnh báo/ngày, vượt ngân sách 44%) làm mặc định. Bản này đưa
+kết luận đó vào cấu hình: ngưỡng mặc định của hệ thống là **0,2675** (`selection_method:
+min_cost_within_budget`); τ\* vẫn là một phương án hiện trên màn hình UI-03 để người dùng thấy cái giá của ngân
+sách.
+
+![Đường cong chi phí trên điểm chọn ngưỡng](figures/06_cost_curve.png)
+
+**Đối chứng giao thức trên một ngày thật sự mới.** Chỉ dùng ngày 1 để học và chọn ngưỡng, rồi áp ngưỡng đó cho
+ngày 2:
+
+| Giao thức sinh điểm trên ngày 1 | Ngưỡng | Cảnh báo/ngày ước tính → thật | Precision ước tính → thật | Recall ngày 2 |
+|---|---|---|---|---|
+| CV ngẫu nhiên 5 fold | τ\* | 327 → **539** (×1,65) | 0,734 → 0,312 | 0,836 |
+| CV ngẫu nhiên 5 fold | trong ngân sách | 200 → 159 (×0,80) | 0,985 → 0,843 | 0,667 |
+| forward-chaining | τ\* | 367 → **536** (×1,46) | 0,687 → 0,313 | 0,836 |
+| forward-chaining | trong ngân sách | 199 → 173 (×0,87) | 0,983 → 0,809 | 0,697 |
+
+Forward-chaining ước tính tải sát hơn ở cả hai ngưỡng, nhưng chưa đủ sát; precision ước tính lạc quan ở mọi dòng
+vì tỷ lệ gian lận ngày 2 thấp hơn (0,144% so với 0,189%). Và ngưỡng trong ngân sách, dù giữ được tải, chỉ cho
+recall 0,67–0,70 ở ngày 2. Vì vậy hệ thống còn **theo dõi** sau khi áp dụng: API-16 so tỷ lệ cảnh báo và
+precision theo kết luận thẩm định với kỳ vọng, theo từng khoảng thời gian (mục 10).
 
 ### 8.3 Bảng so sánh các phương án ngưỡng
 
-Mỗi ngưỡng chọn trên out-of-fold theo một tiêu chí, đo trên tập kiểm thử (56.746 giao dịch, 95 gian lận):
+Mỗi ngưỡng chọn trên điểm forward-chaining theo một tiêu chí, đo trên tập kiểm thử (56.746 giao dịch, 95 gian
+lận):
 
 | Ngưỡng | τ | Cảnh báo/ngày | TP | FP | FN | Precision [KTC] | Recall [KTC] | Chi phí |
 |---|---|---|---|---|---|---|---|---|
-| Mặc định 0,5 | 0,5 | 195 | 74 | 4 | 21 | 0,949 [0,899; 0,987] | 0,779 [0,695; 0,863] | 2.586 EUR |
-| **τ\* — cực tiểu chi phí** | **0,0232** | **287** | **77** | **38** | **18** | **0,670 [0,600; 0,752]** | **0,811 [0,737; 0,884]** | **2.390 EUR** |
-| Recall ≥ 90% trên OOF | 0,00054 | 2.007 | 83 | 720 | 12 | 0,103 [0,094; 0,114] | 0,874 [0,811; 0,937] | 5.067 EUR |
-| Ngân sách 200 cảnh báo/ngày | 0,9625 | 175 | 69 | 1 | 26 | 0,986 [0,956; 1,000] | 0,726 [0,642; 0,811] | 3.182 EUR |
-| Cực đại F1 (tham khảo) | 0,7205 | 190 | 73 | 3 | 22 | 0,961 [0,915; 1,000] | 0,768 [0,684; 0,853] | 2.704 EUR |
+| 0,5 | 0,5 | 180 | 71 | 1 | 24 | 0,986 [0,957; 1,000] | 0,747 [0,663; 0,842] | 2.788 EUR |
+| **Mặc định: chi phí nhỏ nhất trong ngân sách** | **0,2675** | **187** | **72** | **3** | **23** | **0,960 [0,915; 1,000]** | **0,758 [0,674; 0,842]** | **2.682 EUR** |
+| τ\* — cực tiểu chi phí, không ràng buộc | 0,0191 | 242 | 78 | 19 | 17 | 0,804 [0,730; 0,880] | 0,821 [0,747; 0,895] | 2.066 EUR |
+| Recall ≥ 90% trên điểm chọn | 0,00011 | 4.325 | 85 | 1.645 | 10 | 0,049 [0,045; 0,053] | 0,895 [0,832; 0,958] | 9.384 EUR |
+| Cực đại F1 (tham khảo) | 0,6434 | 177 | 70 | 1 | 25 | 0,986 [0,957; 1,000] | 0,737 [0,653; 0,821] | 2.904 EUR |
+
+(τ nhỏ nhất trong 200 cảnh báo/ngày, 0,2664, cho đúng các con số của ngưỡng mặc định trên tập kiểm thử.)
 
 ![Các phương án ngưỡng](figures/06_threshold_options.png)
 
-**Diễn giải bằng lời:** *hạ ngưỡng từ 0,5 xuống τ\* = 0,0232 bắt thêm **3** vụ gian lận, đổi lại **34**
-cảnh báo giả, tiết kiệm ròng **197 EUR** trên tập kiểm thử (khoảng 490 EUR/ngày trên toàn luồng) —
-dưới giả định chi phí cố định của mục 8.1.* Bootstrap theo cặp cho khoản tiết kiệm trên tập kiểm thử là
-−197 [−676; +160] EUR — **chứa 0**. Trên out-of-fold (378 gian lận) là −707 [−1.513; −24] EUR — không
-chứa 0. Vì vậy kết luận "τ\* rẻ hơn 0,5" dựa trên out-of-fold, và chỉ đứng dưới giả định chi phí cố
-định (mục 8.5).
+**Diễn giải bằng lời:** *hạ ngưỡng từ 0,5 xuống τ\* = 0,0191 bắt thêm **7** vụ gian lận [+3; +12], đổi lại
+**18** cảnh báo giả [+10; +27], tiết kiệm ròng **722 EUR** [238; 1.347] trên tập kiểm thử — khoảng tin cậy không
+chứa 0 — dưới giả định chi phí cố định của mục 8.1.* Ngưỡng mặc định thì gần 0,5 hơn là gần τ\*: so với 0,5 nó
+chỉ bắt thêm 1 vụ (chi phí −106 [−343; +20] EUR, chứa 0); so với τ\* nó bỏ lọt thêm 6 vụ (+616 [+147; +1.200] EUR).
+Đó là cái giá của ngân sách 200 cảnh báo/ngày.
+
+**Nghiệm thu AC-M2 (recall ≥ 0,75 tại ngưỡng đề xuất).** Tại ngưỡng mặc định, recall **0,758** [0,674; 0,842]
+= 72/95 với 187 cảnh báo/ngày — **đạt theo ước lượng điểm, sát nút**: một vụ ít hơn là trượt, và cận dưới khoảng
+tin cậy xa dưới 0,75. Năng lực thẩm định cần cho recall 0,75, ước lượng trên điểm chọn ngưỡng, là khoảng 185
+cảnh báo/ngày — ngân sách 200 vừa đủ. Kết quả có điều kiện: dưới hai giả định nghiệp vụ A-01, A-03, và trên tập
+kiểm thử chia ngẫu nhiên; trên một ngày mới (mục 8.2) ngưỡng trong ngân sách chỉ cho recall khoảng 0,70.
 
 Ba điều khác đọc từ bảng:
 
-- **Ngưỡng 0,5 không tệ như lý thuyết dự báo.** `scale_pos_weight` đã đẩy điểm lớp dương lên sát 1,
-  nên tại 0,5 recall vẫn 0,779. Chọn ngưỡng tiết kiệm khoảng 9% chi phí, không phải hàng chục phần trăm.
-- **Ràng buộc chọn vừa khít trên OOF thì hụt trên dữ liệu mới.** Ngưỡng cho recall ≥ 90% trên
-  out-of-fold (0,902) chỉ cho 0,874 trên tập kiểm thử, và đổi lấy 2.007 cảnh báo/ngày — gấp 10 lần năng
-  lực thẩm định giả định. Ràng buộc vận hành nên đặt có biên an toàn.
-- **τ\* vượt ngân sách thẩm định:** 287 cảnh báo/ngày so với 200. Nếu năng lực thẩm định là ràng buộc
-  cứng, ngưỡng hợp lý là 0,9625 — mất 8 vụ gian lận so với τ\*, chi phí tăng 33%. Đó là quyết định của
-  người vận hành; hệ thống cho thấy cái giá của nó (mục 10).
+- **Ngưỡng 0,5 kém hơn bản trước.** Mô hình không có trọng số lớp nên điểm của lớp dương không bị đẩy về sát 1:
+  tại 0,5 recall 0,747 (bản trước 0,779). Chọn ngưỡng vì vậy đáng giá hơn — 722 EUR thay vì 197 EUR trên tập
+  kiểm thử, và lần này khoảng tin cậy không chứa 0.
+- **Ràng buộc chọn vừa khít trên điểm chọn ngưỡng hụt nhẹ trên dữ liệu mới** (recall ≥ 90%: 0,904 → 0,895).
+  Ràng buộc tuân thủ thật cần biên an toàn. Cảnh báo/ngày trên tập kiểm thử lại **thấp hơn** ước tính (187 so với
+  198; 242 so với 297): ước tính trên điểm forward-chaining là phía thận trọng.
+- **Ngân sách là ràng buộc chặt.** Mọi ngưỡng rẻ hơn ngưỡng mặc định đều vượt 200 cảnh báo/ngày; thứ quyết định
+  ngưỡng ở đây là năng lực thẩm định, không phải hàm chi phí (mục 8.4).
 
 ### 8.4 Độ nhạy theo tỷ lệ chi phí
 
 c_FN và c_FP đều là giả định, nên khuyến nghị chỉ vững nếu ngưỡng tối ưu ổn định trong một dải tỷ lệ rộng
-(AC-M8). Giữ c_FP = 5 EUR, đổi c_FN:
+(AC-M8). Giữ c_FP = 5 EUR, đổi c_FN, chọn lại cả τ\* lẫn ngưỡng trong ngân sách trên điểm chọn ngưỡng:
 
-| FN : FP | c_FN (EUR) | τ tối ưu (OOF) | Recall test | Precision test | Cảnh báo/ngày (test) | Hối tiếc khi vẫn dùng τ\* mặc định |
-|---|---|---|---|---|---|---|
-| 5 : 1 | 25 | 0,7205 | 0,768 | 0,961 | 190 | 16,7% |
-| 7,5 : 1 | 37,5 | 0,0986 | 0,800 | 0,844 | 225 | 8,5% |
-| 10 : 1 | 50 | 0,0986 | 0,800 | 0,844 | 225 | 5,0% |
-| 15 : 1 | 75 | 0,0986 | 0,800 | 0,844 | 225 | 1,4% |
-| 20 : 1 – 50 : 1 | 100 – 250 | **0,0232** | 0,811 | 0,670 | 287 | 0% |
-| 75 : 1 | 375 | 0,0023 | 0,853 | 0,263 | 770 | 4,4% |
-| 100 : 1 | 500 | 0,0023 | 0,853 | 0,263 | 770 | 8,8% |
+| FN : FP | c_FN (EUR) | τ\* | Cảnh báo/ngày (điểm chọn) | Recall test | Precision test | Hối tiếc khi giữ τ\* mặc định | τ trong ngân sách | Recall test (ngân sách) |
+|---|---|---|---|---|---|---|---|---|
+| 5 : 1 | 25 | 0,1267 | 218 | 0,768 | 0,948 | 9,6% | 0,4986 | 0,747 |
+| 7,5 : 1 | 37,5 | 0,0462 | 254 | 0,789 | 0,862 | 3,6% | 0,2675 | 0,758 |
+| 10 : 1 | 50 | 0,0382 | 262 | 0,800 | 0,854 | 1,2% | 0,2675 | 0,758 |
+| 15 : 1 – 75 : 1 | 75 – 375 | **0,0191** | 297 | 0,821 | 0,804 | 0% | 0,2675 | 0,758 |
+| 100 : 1 | 500 | 0,0035 | 513 | 0,842 | 0,510 | 1,2% | 0,2675 | 0,758 |
 
-"Hối tiếc" là phần chi phí vượt cực tiểu (trên out-of-fold) nếu vẫn giữ τ\* = 0,0232 khi tỷ lệ thật là
-giá trị ở cột đầu.
+"Hối tiếc" là phần chi phí vượt cực tiểu (trên điểm chọn ngưỡng) nếu vẫn giữ τ\* = 0,0191 khi tỷ lệ thật là giá
+trị ở cột đầu.
 
 ![Độ nhạy theo tỷ lệ chi phí](figures/06_cost_sensitivity.png)
 
-- **τ\* đổi theo bậc, không liên tục**, và **không đổi trên cả dải 20 : 1 → 50 : 1** bao quanh tỷ lệ mặc
-  định 24,4 : 1.
-- **Dùng τ\* mặc định khi tỷ lệ thật khác**, mức hối tiếc ≤ 5% trong dải 10 : 1 → 75 : 1.
-- **Recall trên tập kiểm thử luôn nằm trong 0,77–0,85.** Tỷ lệ chi phí thật sự quyết định **khối lượng
-  thẩm định** (190 → 770 cảnh báo/ngày), không quyết định recall: các vụ bị bỏ lọt nằm ở điểm rất thấp
-  (mục 9.2), hạ ngưỡng thêm chỉ đổi lấy hàng trăm cảnh báo giả.
+- **τ\* đổi theo bậc, không liên tục**, và **không đổi trên cả dải 15 : 1 → 75 : 1** bao quanh tỷ lệ mặc định
+  23,2 : 1. Hối tiếc ≤ 3,6% từ 7,5 : 1 trở lên.
+- **Ngưỡng trong ngân sách chỉ có hai giá trị trên cả dải** (0,4986 ở 5 : 1, 0,2675 ở mọi tỷ lệ khác): khi ngân
+  sách là ràng buộc chặt, tỷ lệ chi phí gần như hết vai trò.
+- **Recall test của τ\* nằm trong 0,77–0,84.** Tỷ lệ chi phí thật sự quyết định **khối lượng thẩm định** (218 →
+  513 cảnh báo/ngày), không quyết định recall.
 
 ### 8.5 Kiểm tra giả định chi phí: tính theo số tiền của từng vụ
 
-Mục 8.1 tính **mọi** vụ bỏ lọt bằng cùng 122,21 EUR, trong khi 36% vụ gian lận có số tiền ≤ 1 EUR (mục 2).
+Mục 8.1 tính **mọi** vụ bỏ lọt bằng cùng 115,94 EUR, trong khi 36% vụ gian lận có số tiền ≤ 1 EUR (mục 2).
 Hai câu hỏi:
 
-**(a) Nguồn của 122,21 có làm lệch τ\* không?** Con số này là trung bình trên dữ liệu thô — gồm cả tập
-kiểm thử và dòng trùng. Đúng quy tắc thì nên ước lượng trên tập huấn luyện:
+**(a) Nguồn của c_FN có làm lệch ngưỡng không?**
 
-| Nguồn của c_FN | Giá trị | τ\* trên out-of-fold |
-|---|---|---|
-| Dữ liệu thô (đang dùng) | 122,21 EUR | 0,023173 |
-| Sau khi loại trùng lặp | 123,87 EUR | 0,023173 |
-| Chỉ tập huấn luyện | 115,94 EUR | 0,023173 |
+| Nguồn của c_FN | Giá trị | τ\* | Ngưỡng mặc định |
+|---|---|---|---|
+| Dữ liệu thô (bản trước) | 122,21 EUR | 0,019058 | 0,267544 |
+| Sau khi loại trùng lặp | 123,87 EUR | 0,019058 | 0,267544 |
+| **Chỉ tập huấn luyện (đang dùng)** | 115,94 EUR | 0,019058 | 0,267544 |
 
-τ\* không đổi — đáy đủ phẳng để sai lệch này không ảnh hưởng kết luận.
+Cả hai ngưỡng không đổi — đáy đủ phẳng, và ngưỡng mặc định do ngân sách quyết định.
 
-**(b) Nếu chi phí bỏ lọt là số tiền của chính vụ bị lọt** (c_FP vẫn 5 EUR):
+**(b) Nếu chi phí bỏ lọt là số tiền của chính vụ bị lọt** (c_FP vẫn 5 EUR): ngưỡng cực tiểu chi phí theo số tiền,
+chọn trên điểm chọn ngưỡng, là τ\*ₐ = 0,019058 — **trùng τ\***.
 
 | Tập | Ngưỡng | TP | FP | FN | Tiền gian lận bị lọt | Chi phí — cố định | Chi phí — theo số tiền |
 |---|---|---|---|---|---|---|---|
-| Out-of-fold | 0,5 | 313 | 34 | 65 | 10.735 EUR | 8.114 | 10.905 |
-| Out-of-fold | τ\* = 0,0232 | 323 | 137 | 55 | 10.430 EUR | **7.407** | 11.115 |
-| Out-of-fold | τ\*ₐ = 0,0066 | 326 | 350 | 52 | 9.123 EUR | 8.105 | **10.873** |
-| Kiểm thử | 0,5 | 74 | 4 | 21 | 3.793 EUR | 2.586 | 3.813 |
-| Kiểm thử | τ\* = 0,0232 | 77 | 38 | 18 | 3.783 EUR | **2.390** | 3.973 |
-| Kiểm thử | τ\*ₐ = 0,0066 | 78 | 89 | 17 | 3.332 EUR | 2.523 | **3.777** |
+| Điểm chọn | 0,5 | 186 | 27 | 63 | 10.898 EUR | 7.439 | 11.033 |
+| Điểm chọn | τ\* = 0,0191 | 206 | 138 | 43 | 8.440 EUR | 5.675 | 9.130 |
+| Điểm chọn | mặc định 0,2675 | 189 | 40 | 60 | 10.559 EUR | 7.156 | 10.759 |
+| Kiểm thử | 0,5 | 71 | 1 | 24 | 4.052 EUR | 2.788 | 4.057 |
+| Kiểm thử | τ\* = 0,0191 | 78 | 19 | 17 | 3.793 EUR | 2.066 | 3.888 |
+| Kiểm thử | mặc định 0,2675 | 72 | 3 | 23 | 4.052 EUR | 2.682 | 4.067 |
 
-τ\*ₐ là ngưỡng cực tiểu chi phí theo số tiền, chọn trên out-of-fold. Hiệu chi phí theo cặp (A − B, âm
-nghĩa là A rẻ hơn):
+Hiệu chi phí theo cặp (A − B, âm nghĩa là A rẻ hơn):
 
 | So sánh | Tập | Chi phí cố định | Chi phí theo số tiền |
 |---|---|---|---|
-| τ\* so với 0,5 | Out-of-fold | −707 [−1.513; −24] | +209 [−320; +539] |
-| τ\* so với 0,5 | **Kiểm thử** | −197 [−676; +160] | **+160 [+103; +217]** |
-| τ\*ₐ so với 0,5 | Kiểm thử | −64 [−603; +333] | −36 [−983; +486] |
-| τ\*ₐ so với τ\* | Kiểm thử | +133 [−157; +315] | −196 [−1.144; +315] |
+| τ\* so với 0,5 | Điểm chọn | −1.764 [−2.752; −821] | −1.903 [−4.749; +84] |
+| τ\* so với 0,5 | **Kiểm thử** | **−722 [−1.347; −238]** | **−169 [−673; +105]** |
+| Mặc định so với 0,5 | Kiểm thử | −106 [−343; +20] | +9 [−1; +25] |
+| Mặc định so với τ\* | Kiểm thử | +616 [+147; +1.200] | +179 [−92; +683] |
 
 ![Chi phí theo số tiền](figures/06_amount_cost.png)
 
-**Khi tính theo số tiền, τ\* đắt hơn 0,5 trên tập kiểm thử, và khoảng tin cậy không chứa 0** (τ\* đắt
-hơn ở 100% lần lặp bootstrap). Lý do nằm ở hình bên phải: những vụ mà việc hạ ngưỡng 0,5 → τ\* "bắt
-thêm" là **vụ nhỏ** — trung vị 2,06 EUR trên out-of-fold; trên tập kiểm thử là ba vụ 2,22 / 3,76 /
-3,79 EUR — đổi lấy 34 × 5 = 170 EUR thẩm định. Ngược lại, tiền mất tập trung ở vài vụ lớn mà ngưỡng hợp
-lý nào cũng bỏ lọt: ở τ\*, ba vụ lớn nhất (549, 723, 1.097 EUR) chiếm 63% trong 3.783 EUR bị lọt trên
-tập kiểm thử, còn 8/18 vụ lọt có số tiền ≤ 1 EUR. Đường chi phí theo số tiền phẳng và lởm chởm trên cả
-dải 0,007 … 0,7 (hình trái), và τ\*ₐ không hơn 0,5 hay τ\* một cách có ý nghĩa thống kê.
+**Khi tính theo số tiền, lợi ích của τ\* so với 0,5 co lại hơn 4 lần và khoảng tin cậy chứa 0.** Bản trước
+(XGBoost + `class_weight`) còn thấy τ\* **đắt hơn** 0,5 (+160 [+103; +217] EUR), vì 3 vụ nó bắt thêm chỉ đáng
+2–4 EUR; với mô hình không trọng số lớp, các vụ bắt thêm lớn hơn nên dấu không đổi. Tiền mất vẫn tập trung ở vài
+vụ lớn mà ngưỡng hợp lý nào cũng bỏ lọt: ở ngưỡng mặc định, 23 vụ lọt trên tập kiểm thử mất 4.052 EUR, ba vụ lớn
+nhất (549, 723, 1.097 EUR) chiếm 58%, còn 8 vụ có số tiền ≤ 1 EUR.
 
-**Hệ quả cho kết luận.** Câu "hạ ngưỡng từ 0,5 xuống τ\* tiết kiệm tiền" chỉ đúng dưới giả định mỗi vụ
-lọt tốn 122,21 EUR. Điều vững dưới cả hai cách tính là: (1) đáy chi phí phẳng trên một dải ngưỡng rộng;
-(2) trong dải đó, chọn ngưỡng theo **năng lực thẩm định** và theo giả định chi phí mà nghiệp vụ xác
-nhận; (3) giả định chi phí phải được nêu rõ, vì nó quyết định cả **dấu** của khoản tiết kiệm. Hệ thống
-vẫn dùng τ\* = 0,02317 làm mặc định — đổi hay không là quyết định nghiệp vụ, không phải kết luận thống kê.
+**Hệ quả cho kết luận.** "Hạ ngưỡng tiết kiệm tiền" đứng chắc dưới chi phí cố định, chỉ còn là xu hướng dưới chi
+phí theo số tiền. Dạng hàm chi phí — cố định, theo số tiền, hay số tiền cộng phí cố định cho vụ thử thẻ — là
+quyết định nghiệp vụ, và quyết định cả độ lớn lẫn độ chắc chắn của khoản tiết kiệm.
 
 ### 8.6 Từ điểm tới hành động: cho qua, thẩm định, đề xuất chặn
 
-Hệ thống phân ba mức quyết định. Ngưỡng τ tách "cho qua" với "cần thẩm định"; một ngưỡng thứ hai tách
-"cần thẩm định" với "đề xuất chặn". Thiết kế ban đầu đặt ngưỡng chặn ở 3τ — một bội số không dựa trên
-phân tích nào. Đo trên dữ liệu thì sai hẳn, nên ngưỡng chặn được chọn lại theo **precision**: ngưỡng nhỏ
-nhất mà *mọi* ngưỡng từ đó trở lên có precision ≥ p trên out-of-fold (precision không đơn điệu theo
-ngưỡng, nên điều kiện đặt cho cả phần đuôi):
+Hệ thống phân ba mức quyết định. Ngưỡng τ tách "cho qua" với "cần thẩm định"; một ngưỡng thứ hai tách "cần thẩm
+định" với "đề xuất chặn". Thiết kế ban đầu đặt ngưỡng chặn ở 3τ — một bội số không dựa trên phân tích nào —
+nên ngưỡng chặn được chọn lại theo **precision**: ngưỡng nhỏ nhất mà *mọi* ngưỡng từ đó trở lên có precision ≥ p
+trên điểm chọn ngưỡng (precision không đơn điệu theo ngưỡng, nên điều kiện đặt cho cả phần đuôi). **Căn cứ là các
+dòng "điểm chọn"**; dòng "kiểm thử" chỉ để xác nhận:
 
 | Luật chặn | Ngưỡng chặn | Tập | Thẩm định: gian lận / hợp lệ | Chặn: gian lận / hợp lệ | Precision của "chặn" |
 |---|---|---|---|---|---|
-| Cũ: 3τ\* | 0,0695 | Kiểm thử | **0** / 19 | 77 / **19** | 0,802 |
-| Precision ≥ 90% (OOF) | 0,5568 | Kiểm thử | 3 / 35 | 74 / 3 | 0,961 |
-| **Precision ≥ 95% (OOF)** | **0,9735** | Kiểm thử | **8** / 37 | **69 / 1** | **0,986** |
-| Precision ≥ 97% (OOF) | 0,9908 | Kiểm thử | 9 / 37 | 68 / 1 | 0,986 |
+| Cũ: 3τ\* | 0,0572 | Điểm chọn | 0 / 0 | 189 / 40 | 0,825 |
+| Precision ≥ 90% | 0,6121 | Điểm chọn | 7 / 20 | 182 / 20 | 0,901 |
+| **Precision ≥ 95%** | **0,9995** | Điểm chọn | **176 / 40** | **13 / 0** | **1,000** |
+| Cũ: 3τ\* | 0,0572 | Kiểm thử | 0 / 0 | 72 / 3 | 0,960 |
+| Precision ≥ 90% | 0,6121 | Kiểm thử | 2 / 2 | 70 / 1 | 0,986 |
+| **Precision ≥ 95%** | **0,9995** | Kiểm thử | **65 / 3** | **7 / 0** | **1,000** |
 
-Luật 3τ để dải thẩm định **không có vụ gian lận nào** và chặn tự động một nửa số cảnh báo giả. Hệ thống
-dùng mức 95%: chặn tự động 69 vụ gian lận và đúng 1 khách hợp lệ; dải thẩm định có 8 vụ gian lận — đúng
-loại việc cần con người.
+Với ngưỡng mặc định 0,2675, luật 3τ\* (0,0572) nằm dưới τ nên biến mọi cảnh báo thành "đề xuất chặn" — 40 khách
+hợp lệ trên điểm chọn ngưỡng bị chặn thẳng. Hệ thống dùng mức 95% (`BLOCK_MIN_PRECISION`): trên điểm forward-
+chaining, điều kiện cho mọi phần đuôi chỉ thoả từ 0,9995, nên chỉ các vụ gần như chắc chắn bị chặn tự động (7 vụ
+gian lận, 0 khách hợp lệ trên tập kiểm thử) và gần như mọi cảnh báo qua tay người thẩm định — chấp nhận được khi
+tải chỉ khoảng 190 cảnh báo/ngày. Mức 90% chặn được 70 gian lận đổi lấy 1 khách hợp lệ; chọn mức nào là quyết định
+nghiệp vụ (bản trước, với OOF ngẫu nhiên và mô hình có trọng số lớp, mức 95% cho 0,9735).
 
 ### 8.7 Điểm rủi ro có phải xác suất không?
 
-Tính gộp thì có: điểm trung bình trên out-of-fold 0,00159 so với tỷ lệ gian lận 0,00167; Brier score
-0,000408, tốt hơn khoảng 4 lần so với đoán hằng số (0,001663). Nhưng theo từng dải điểm (khoảng tin cậy
-Wilson 95% [12] cho tỷ lệ thật):
+Tính gộp thì gần: điểm trung bình trên điểm chọn ngưỡng 0,00122 so với tỷ lệ gian lận 0,00137; Brier 0,000439,
+tốt hơn khoảng 3 lần so với đoán hằng số (0,001369). Theo từng dải điểm (khoảng tin cậy Wilson 95% [12] cho tỷ lệ
+thật):
 
-| Dải điểm (OOF) | Số giao dịch | Điểm trung bình | Tỷ lệ gian lận thật [KTC] |
+| Dải điểm (điểm chọn ngưỡng) | Số giao dịch | Điểm trung bình | Tỷ lệ gian lận thật [KTC] |
 |---|---|---|---|
-| < 0,001 | 225.144 | 0,000017 | 0,00019 [0,00014; 0,00025] |
-| 0,001 – 0,005 | 1.075 | 0,0021 | 0,0084 [0,0044; 0,0158] |
-| 0,005 – τ\* | 301 | 0,0103 | 0,013 [0,005; 0,034] |
-| τ\* – 0,1 | 78 | 0,044 | 0,064 [0,028; 0,141] |
-| 0,1 – 0,5 | 35 | 0,214 | 0,143 [0,063; 0,294] |
-| 0,5 – 0,9 | 20 | 0,768 | 0,35 [0,18; 0,57] |
-| ≥ 0,9 | 327 | 0,997 | 0,936 [0,904; 0,958] |
+| < 0,001 | 180.250 | 0,000022 | 0,00021 [0,00015; 0,00028] |
+| 0,001 – 0,005 | 832 | 0,0020 | 0,0072 [0,0033; 0,0156] |
+| 0,005 – 0,02 | 161 | 0,0095 | 0,0062 [0,0011; 0,0343] |
+| 0,02 – 0,1 | 83 | 0,049 | 0,108 [0,058; 0,193] |
+| 0,1 – 0,5 | 45 | 0,266 | 0,222 [0,125; 0,363] |
+| 0,5 – 0,9 | 39 | 0,709 | 0,51 [0,36; 0,66] |
+| ≥ 0,9 | 174 | 0,986 | 0,954 [0,912; 0,977] |
 
-Hai đầu đều quá tự tin: điểm ≥ 0,9 không phải "chắc 99,7%", và điểm dưới 0,001 thấp hơn tỷ lệ thật
-khoảng 10 lần. Điều này **không** ảnh hưởng tới mọi kết quả dựa trên thứ hạng và ngưỡng (PR-AUC, τ\*,
-các bảng trên), vì chúng không đọc điểm như xác suất. Nó **có** ảnh hưởng nếu ai đó đọc điểm như xác
-suất hoặc tính tổn thất kỳ vọng `điểm × số tiền`; khi đó cần hiệu chỉnh đơn điệu (isotonic) [13] trên
-out-of-fold — không đổi thứ hạng nên không đổi ngưỡng hay PR-AUC. Giao diện vì vậy gọi đây là "điểm rủi
-ro", không phải "xác suất".
+Không còn trọng số lớp nên điểm gần xác suất hơn bản trước (dải ≥ 0,9: 0,986 so với 0,954, bản trước 0,997 so với
+0,936), nhưng vẫn lệch ở hai đầu: dải 0,5–0,9 quá tự tin, dải 0,02–0,1 và dưới 0,001 thiếu tự tin. Điều này
+**không** ảnh hưởng tới mọi kết quả dựa trên thứ hạng và ngưỡng (PR-AUC, các ngưỡng, các bảng trên). Nó **có** ảnh
+hưởng nếu ai đó đọc điểm như xác suất hoặc tính tổn thất kỳ vọng `điểm × số tiền`; khi đó cần hiệu chỉnh đơn
+điệu (isotonic) [13] trên điểm out-of-fold — chưa làm. Giao diện vì vậy gọi đây là "điểm rủi ro", không phải
+"xác suất".
 
 ### 8.8 Trả lời câu hỏi "vì sao chọn ngưỡng này"
 
-τ\* = 0,0232 là ngưỡng cực tiểu chi phí kỳ vọng với giả định bỏ lọt một vụ tốn 122,21 EUR và thẩm định
-một cảnh báo tốn 5 EUR, **chọn trên dữ liệu out-of-fold** để tập kiểm thử giữ được vai trò đo khách
-quan. Nó vững trước sai số của tỷ lệ chi phí (không đổi trong dải 20 : 1 – 50 : 1, hối tiếc ≤ 5% trong
-10 : 1 – 75 : 1), cho recall 0,811 và 287 cảnh báo/ngày trên dữ liệu chưa từng thấy. Hai giới hạn đi kèm:
-nó vượt ngân sách thẩm định 200/ngày, và lợi thế của nó so với 0,5 biến mất nếu chi phí bỏ lọt tỷ lệ với
-số tiền giao dịch. Vì cả hai điều đó phụ thuộc nghiệp vụ, ngưỡng là **cấu hình** của hệ thống — người
-dùng đổi được lúc chạy và thấy ngay hệ quả (mục 10) — chứ không phải một phần cứng của mô hình.
+Ngưỡng mặc định **0,2675** là ngưỡng có chi phí kỳ vọng nhỏ nhất trong những ngưỡng giữ tải thẩm định ở tối đa
+200 cảnh báo/ngày, với giả định bỏ lọt một vụ tốn 115,94 EUR và thẩm định một cảnh báo tốn 5 EUR. Nó được **chọn
+trên điểm forward-chaining** của tập huấn luyện, để tập kiểm thử giữ vai trò đo khách quan và để ước tính tải
+cảnh báo sát với một ngày mới. Trên tập kiểm thử: recall 0,758, precision 0,960, 187 cảnh báo/ngày.
+
+Nếu không có ràng buộc ngân sách, τ\* = 0,0191 rẻ hơn rõ rệt (−616 EUR trên tập kiểm thử) nhưng cần khoảng 300
+cảnh báo/ngày; τ\* vững trước sai số của tỷ lệ chi phí (không đổi trong dải 15 : 1 – 75 : 1). Ba giới hạn đi kèm:
+lợi thế của việc hạ ngưỡng co lại và mất ý nghĩa thống kê nếu chi phí bỏ lọt tỷ lệ với số tiền giao dịch; trên một
+ngày mới, ngưỡng trong ngân sách chỉ cho recall khoảng 0,70; và cả ba giả định A-01…A-03 chưa được nghiệp vụ xác
+nhận. Vì vậy ngưỡng là **cấu hình** của hệ thống — người dùng đổi được lúc chạy, thấy ngay hệ quả trên điểm chọn
+ngưỡng, và theo dõi được sau khi áp dụng (mục 10) — chứ không phải một phần cứng của mô hình.
 
 ---
 
@@ -696,25 +829,27 @@ dùng đổi được lúc chạy và thấy ngay hệ quả (mục 10) — ch�
 ### 9.1 SHAP toàn cục
 
 Giá trị SHAP [14, 15] tính bằng TreeSHAP trên mô hình XGBoost, thang log-odds; tổng các đóng góp cộng giá
-trị cơ sở bằng đúng logit của điểm rủi ro (sai số cộng tối đa 2,2·10⁻⁵).
+trị cơ sở bằng đúng logit của điểm rủi ro (sai số cộng tối đa 2,4·10⁻⁵). Giá trị cơ sở là −6,85 (xác suất
+0,001) — mô hình không có trọng số lớp nên điểm xuất phát sát tỷ lệ gian lận thật.
 
 ![Tóm tắt SHAP](figures/07_shap_summary.png)
 
 | Hạng SHAP | Đặc trưng | mean\|SHAP\| | Tỷ trọng | Hạng theo Cohen's d | Hạng theo Cliff's δ |
 |---|---|---|---|---|---|
-| 1 | V14 | 2,68 | 15,8% | 2 | 1 |
-| 2 | V4 | 1,88 | 11,1% | 9 | 2 |
-| 3 | V12 | 1,29 | 7,6% | 3 | 3 |
-| 4 | V11 | 1,00 | 5,9% | 8 | 4 |
-| 5 | V10 | 0,95 | 5,6% | 4 | 5 |
-| 6 | V3 | 0,86 | 5,1% | 6 | 6 |
-| 7 | V8 | 0,67 | 3,9% | 17 | 18 |
+| 1 | V4 | 1,39 | 14,7% | 9 | 2 |
+| 2 | V14 | 1,02 | 10,7% | 2 | 1 |
+| 3 | V12 | 0,99 | 10,5% | 3 | 3 |
+| 4 | V10 | 0,85 | 8,9% | 4 | 5 |
+| 5 | V11 | 0,40 | 4,2% | 8 | 4 |
+| 6 | V3 | 0,31 | 3,3% | 6 | 6 |
+| 7 | V8 | 0,29 | 3,0% | 17 | 18 |
 
-- **Năm đặc trưng V14, V4, V12, V11, V10 chiếm 46% tổng mean|SHAP|.** Giờ trong ngày (`hour_sin` +
-  `hour_cos`) chiếm 2,7%, `Amount` 2,0%.
-- **SHAP và thống kê đơn biến chỉ đồng thuận vừa phải:** tương quan hạng Spearman với Cohen's d 0,42,
-  với Cliff's δ 0,43, với hệ số Logistic Regression 0,30.
-- **V17 — hạng 1 theo Cohen's d — chỉ hạng 24/31 theo SHAP.** Nó tách hai lớp rất tốt khi đứng một mình
+- **Năm đặc trưng V4, V14, V12, V10, V11 chiếm 49% tổng mean|SHAP|.** `Amount` đứng hạng 8 (2,9%), giờ
+  trong ngày (`hour_sin` + `hour_cos`) 2,8%. Riêng trong lớp gian lận, V14 đứng đầu. (Mô hình có trọng số
+  lớp của bản trước: V14 dẫn đầu với 15,8%, `Amount` hạng 19.)
+- **SHAP và thống kê đơn biến chỉ đồng thuận vừa phải:** tương quan hạng Spearman với Cohen's d 0,40,
+  với Cliff's δ 0,46, với hệ số Logistic Regression 0,47.
+- **V17 — hạng 1 theo Cohen's d — xếp cuối (31/31) theo SHAP.** Nó tách hai lớp rất tốt khi đứng một mình
   (mục 3), nhưng thừa thông tin khi mô hình đã có V14, V12, V10. Một đặc trưng mạnh đơn biến không nhất
   thiết quan trọng trong mô hình nhiều biến — đây là câu trả lời cho câu hỏi mục 3 để ngỏ.
 
@@ -722,16 +857,19 @@ trị cơ sở bằng đúng logit của điểm rủi ro (sai số cộng tối
 
 ### 9.2 Phân tích lỗi
 
-Tại τ\*, trên tập kiểm thử: 77 TP, 38 FP, 18 FN.
+Tại ngưỡng mặc định, trên tập kiểm thử: 72 TP, 3 FP, 23 FN.
 
-**Bỏ lọt (FN) là giới hạn của đặc trưng, không phải của ngưỡng.** 12/18 vụ bỏ lọt có điểm dưới 0,001 —
-mô hình gần như chắc chắn chúng hợp lệ; trung vị điểm của FN là 0,00011. **66,7% vụ bỏ lọt có cả 5 đặc
-trưng chính nằm trong khoảng [P1, P99] của lớp hợp lệ**, so với 3,9% ở các vụ bắt được. Trung vị V14:
-TP −6,92, FN −0,43, giao dịch hợp lệ 0,06 — vụ bị lọt trông giống hệt giao dịch hợp lệ. Không ngưỡng
-hợp lý nào bắt được chúng mà không kéo theo hàng nghìn cảnh báo giả (mục 8.3, dòng recall ≥ 90%).
+**Bỏ lọt (FN) là giới hạn của đặc trưng, không phải của ngưỡng.** 13/23 vụ bỏ lọt có điểm dưới 0,001 —
+mô hình gần như chắc chắn chúng hợp lệ; trung vị điểm của FN là 0,00028. **61% vụ bỏ lọt có cả 5 đặc
+trưng chính nằm trong khoảng [P1, P99] của lớp hợp lệ**, so với 1,4% ở các vụ bắt được. Trung vị V14:
+TP −7,21, FN −0,93, giao dịch hợp lệ 0,06 — vụ bị lọt trông giống giao dịch hợp lệ. Không ngưỡng hợp lý
+nào bắt được chúng mà không kéo theo hàng nghìn cảnh báo giả (mục 8.3, dòng recall ≥ 90%: 1.645 cảnh báo
+giả). Trung vị `Amount` của FN chỉ 3,76 EUR, so với 31,99 ở các vụ bắt được.
 
-**Cảnh báo giả (FP) mang chữ ký của gian lận.** FP điểm cao có đủ dấu hiệu V14, V10, V12 đẩy điểm lên
-(trung vị V14 của FP là −2,64 — nằm giữa hai lớp); điểm trung vị của FP là 0,065.
+**Cảnh báo giả (FP) mang chữ ký của gian lận.** Ở ngưỡng mặc định chỉ có 3 cảnh báo giả, và cả ba có V14,
+V10, V12 đẩy điểm lên mạnh (trung vị V14 của chúng −6,80 — nằm giữa vùng gian lận); điểm trung vị 0,48. Một
+trong ba là giao dịch có `Amount` lớn nhất bộ dữ liệu (25.691,16 EUR). Giao dịch hợp lệ điểm cao nhất (0,998)
+có thể là bất thường thật hoặc nhãn sai — dữ liệu không phân biệt được.
 
 ![Giải thích một FN và một FP](figures/07_waterfall_fn_fp.png)
 
@@ -783,34 +921,41 @@ kéo xuống). Nhãn thật chỉ hiện **sau** khi người thẩm định quy
 ![Chi tiết giao dịch](figures/10_ui_drawer.png)
 
 **Cấu hình ngưỡng** — thanh trượt theo thang log; mọi chỉ số (cảnh báo/ngày, gian lận bắt được,
-precision, chi phí) tính lại ngay trong trình duyệt. Đổi tham số chi phí thì máy chủ tìm lại ngưỡng tối
-ưu trên out-of-fold; có thể thêm ràng buộc vận hành. Hình dưới: chi phí bỏ lọt 600 EUR với ngân sách
-150 cảnh báo/ngày — hệ thống báo rằng ràng buộc đang chặn nghiệm.
+precision, chi phí) tính lại ngay trong trình duyệt **trên điểm chọn ngưỡng** — điểm forward-chaining của
+tập huấn luyện, gửi xuống dạng nhị phân đã sắp — không trên tập kiểm thử, vì kéo thanh trượt là đang chọn
+ngưỡng (ML-08). Một dòng chỉ đọc cho kết quả của ngưỡng đang áp dụng trên tập kiểm thử. Đổi tham số chi phí
+thì máy chủ tìm lại ngưỡng tối ưu trên cùng bộ điểm; ràng buộc ngân sách điền sẵn theo chính sách mặc định.
+Hình dưới (chụp 2026-10-11, mô hình `xgb_none_v2`): chi phí bỏ lọt 600 EUR với ngân sách 150 cảnh báo/ngày —
+hệ thống báo ràng buộc đang chặn nghiệm (không có nó, ngưỡng tối ưu là 0,0035).
 
 ![Cấu hình ngưỡng](figures/10_ui_threshold.png)
 
 **Hiệu năng mô hình** và **phát lại** — chỉ số kèm khoảng tin cậy, đường PR/ROC, bảng so sánh chiến
 lược; chế độ phát lại cho giao dịch ngày 2 "chảy" theo đồng hồ mô phỏng, mô hình chấm từng mẻ khi
-giao dịch tới giờ.
+giao dịch tới giờ. Màn hình hiệu năng có thêm thẻ **theo dõi vận hành** (`GET /monitoring`): với các giao
+dịch mô hình hiện hành đã chấm, theo từng khoảng 6 giờ của dữ liệu, so tỷ lệ cảnh báo (quy ra mỗi ngày),
+precision theo kết luận thẩm định và recall theo nhãn với kỳ vọng ước lượng trên điểm chọn ngưỡng; khoảng
+nào lệch quá dao động mẫu (KTC Wilson 95%) thì được đánh dấu — tín hiệu để chọn lại ngưỡng.
 
 ### 10.3 Nghiệm thu
 
 | Mã | Tiêu chí | Kết quả |
 |---|---|---|
-| AC-A1 | Tải CSV 10.000 dòng, chấm xong dưới 30 giây | 2,0 giây phía máy chủ; 3,1 giây tới lúc giao diện hiện kết quả |
+| AC-A1 | Tải CSV 10.000 dòng, chấm xong dưới 30 giây | 1,9–2,0 giây (đo lại 2026-10-11 bằng `scripts/ui/flow.js`); 3,1 giây tới lúc giao diện hiện kết quả (2026-10-02) |
 | AC-A2 | Hàng đợi sắp đúng theo điểm | Đạt |
-| AC-A3 | Kéo thanh trượt cập nhật dưới 200 ms | Lâu nhất 43–131 ms qua 4 lượt |
+| AC-A3 | Kéo thanh trượt cập nhật dưới 200 ms | Lâu nhất 44–68 ms qua 2 lượt trên điểm chọn ngưỡng (2026-10-11; trước review 43–131 ms) |
 | AC-A4 | 5 yếu tố dương và 3 yếu tố âm | Đạt **khi mô hình có đủ**: 77% giao dịch điểm thấp có ít hơn 5 đặc trưng đẩy điểm lên; hệ thống không mượn một đóng góp âm để cho đủ 5 |
-| AC-A5 | Đổi chi phí làm dịch ngưỡng tối ưu | c_FN 122,21 → 600 EUR: τ tối ưu 0,02317 → 0,00226 |
+| AC-A5 | Đổi chi phí làm dịch ngưỡng tối ưu | c_FN 115,94 → 600 EUR: τ tối ưu không ràng buộc 0,0191 → 0,0035 trên điểm chọn ngưỡng (`tests/test_api.py`); với ngân sách 200/ngày ngưỡng giữ 0,2675 — ràng buộc chặn nghiệm |
 | AC-A6 | Phát lại 3 phút không lỗi | 185 giây, 1.605 giao dịch, 0 lỗi |
 | AC-A7 | Kết luận thẩm định còn sau khởi động lại | Đạt |
 | AC-A8 | `docker compose up` trên máy sạch | Đạt trên bản sao sạch của repo — **cùng máy vật lý**, chưa thử trên máy thứ hai |
 | AC-A9 | Điều hướng bằng bàn phím | 24/24 bước; Lighthouse Accessibility 100 |
 | AC-A10 | Đầu vào sai trả đúng mã lỗi, không sập | 13 loại đầu vào sai, đúng mã HTTP và mã lỗi |
 
-Chấm một giao dịch (`/score`): p95 khoảng 20 ms phía máy chủ (yêu cầu < 50 ms). 350 ca kiểm thử tự động
-xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng giữa trình duyệt và Python tới từng bit, và
-đối chiếu SHAP của API với explainer của notebook tới từng bit.
+Chấm một giao dịch (`/score`): p95 16,8 ms phía máy chủ, 26,4 ms tính cả HTTP (yêu cầu < 50 ms). 406 ca
+kiểm thử tự động xanh (2026-10-11), gồm kiểm thử chống rò rỉ — cả quét mã lẫn kiểm thử canary theo hành vi —,
+đối chiếu phép tính ngưỡng giữa trình duyệt và Python tới từng bit (kể cả đường nhị phân của điểm chọn
+ngưỡng), và đối chiếu SHAP của API với explainer của notebook tới từng bit.
 
 ---
 
@@ -822,11 +967,12 @@ xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng 
    dừng ở mức "V14 quan trọng"; không suy ra được nguyên nhân nghiệp vụ, không thiết kế được đặc trưng
    mới từ hiểu biết nghiệp vụ, và không kiểm được mô hình có học điều gì vô lý hay không.
 2. **Dữ liệu chỉ trải trong hai ngày của tháng 9/2013**, tại châu Âu. Không đại diện cho mùa vụ, cho thị
-   trường khác, hay cho các kiểu gian lận xuất hiện sau đó. Ngay giữa hai ngày đã có dịch chuyển: chia
-   theo thời gian, precision tại cùng ngưỡng giảm từ 0,67 xuống 0,33 (mục 7.3).
+   trường khác, hay cho các kiểu gian lận xuất hiện sau đó. Ngay giữa hai ngày đã có dịch chuyển: ngưỡng
+   chọn bằng CV ngẫu nhiên trên ngày 1 cho precision 0,365 ở ngày 2, so với 0,862 khi chia ngẫu nhiên (mục 7.3);
+   ngưỡng chọn bằng forward-chaining ước tính tải sát hơn nhưng vẫn lệch (mục 8.2).
 3. **Chỉ 492 mẫu dương (95 trong tập kiểm thử) làm khoảng tin cậy rất rộng.** Khoảng tin cậy 95% của
-   PR-AUC rộng 0,15 (0,747–0,896), của recall rộng 0,15. Cận dưới của cả hai sát dưới tiêu chí 0,75;
-   nhiều so sánh giữa các cấu hình không kết luận được (mục 5, 6.3, 7.1).
+   PR-AUC rộng 0,15 (0,747–0,900), của recall tại ngưỡng mặc định rộng 0,17 (0,674–0,842). Cận dưới của cả
+   hai dưới tiêu chí 0,75; nhiều so sánh giữa các cấu hình không kết luận được (mục 5, 6.3, 7.1).
 4. **Hai điều bộ dữ liệu không ghi** mà đồ án phải quy ước: đơn vị tiền (EUR) và giờ bắt đầu của `Time`
    (00:00) — mục 1.4.
 5. **Nhãn có sẵn tại thời điểm chấm.** Trong thực tế nhãn gian lận chỉ có sau điều tra, có độ trễ; đánh
@@ -834,10 +980,17 @@ xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng 
 
 ### 11.2 Hạn chế của phương pháp
 
-- **Chi phí là giả định** và quyết định cả dấu của khoản tiết kiệm khi chọn ngưỡng (mục 8.5).
-- **Đánh giá chính dùng cách chia ngẫu nhiên**; cách chia theo thời gian sát triển khai hơn và cho kết
-  quả thấp hơn.
+- **Chi phí và ngân sách thẩm định là giả định chưa được nghiệp vụ xác nhận.** Dạng hàm chi phí quyết định
+  độ lớn và độ chắc chắn của khoản tiết kiệm khi hạ ngưỡng (mục 8.5); ngân sách quyết định ngưỡng mặc định
+  và việc AC-M2 đạt hay không (mục 8.2, 8.3).
+- **Đánh giá chính dùng cách chia ngẫu nhiên.** Ngưỡng đã được chọn trên điểm forward-chaining theo thời gian,
+  nhưng PR-AUC và các bảng chính vẫn đo trên tập kiểm thử chia ngẫu nhiên; cách chia theo thời gian sát
+  triển khai hơn và cho kết quả thấp hơn.
+- **Quy tắc chọn cấu hình được đề xuất sau khi đã thấy bảng 20 tổ hợp** (dù trước khi chạy CV lặp, lưới theo
+  mức, và không nhìn tập kiểm thử) — không hoàn toàn "đặt trước" theo nghĩa chặt.
 - **Điểm rủi ro không phải xác suất ở hai đầu** (mục 8.7).
+- **Theo dõi sau áp dụng mới ở mức so với kỳ vọng**: chưa có cảnh báo tự động, chưa tự chọn lại ngưỡng, và
+  recall ngoài đời cần nhãn đến trễ.
 - **Tái lập mới kiểm trên một máy**; huấn luyện lại trên máy khác số lõi có thể lệch nhẹ (mục 7.5).
 
 ### 11.3 Hướng mở rộng
@@ -846,8 +999,9 @@ xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng 
   dịch (đã có trong `src/threshold.py`), hoặc quyết định theo tổn thất kỳ vọng từng giao dịch sau khi
   hiệu chỉnh xác suất.
 - **Hiệu chỉnh xác suất** (isotonic trên out-of-fold) để điểm đọc được như xác suất.
-- **Theo dõi dịch chuyển và hiệu chỉnh ngưỡng định kỳ**, dùng nhãn thẩm định thu được từ chính hệ thống
-  (bảng `reviews`).
+- **Theo dõi dịch chuyển đầy đủ hơn:** hệ thống đã so tỷ lệ cảnh báo và precision thẩm định với kỳ vọng
+  (API-16); bước tiếp là PSI của phân bố điểm, cảnh báo tự động, và chọn lại ngưỡng trên cửa sổ nhãn thẩm định
+  gần nhất (bảng `reviews`).
 - **Đánh giá theo thời gian làm mặc định** khi có dữ liệu dài hơn hai ngày.
 - **Đặc trưng hành vi theo thẻ** (tần suất, số tiền so với lịch sử của chính chủ thẻ) — không làm được
   với bộ dữ liệu này vì không có mã thẻ.
@@ -858,18 +1012,23 @@ xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng 
 
 1. Ở tỷ lệ 1 : 600, **accuracy vô nghĩa** và ROC-AUC che mất khác biệt; PR-AUC kèm khoảng tin cậy mới
    phân biệt được mô hình. Accuracy thậm chí xếp hạng ngược hai mô hình cơ sở.
-2. Trong 20 tổ hợp, **mô hình quyết định nhiều hơn chiến lược xử lý mất cân bằng**. Nhóm dẫn đầu hoà nhau
-   ở PR-AUC ≈ 0,855; chọn XGBoost + `scale_pos_weight` vì nhanh và cho điểm mịn. Hiệu quả của SMOTE so
-   với trọng số lớp phụ thuộc mô hình; SMOTE + Tomek không thêm gì; undersampling nhanh nhưng kém.
-3. Mô hình cuối đạt **PR-AUC 0,825 [0,747; 0,896]** và **recall 0,811 [0,737; 0,884]** trên tập kiểm thử,
-   đạt tiêu chí theo ước lượng điểm; khi chia theo thời gian, PR-AUC còn 0,782 và precision giảm một nửa.
-4. **Chọn ngưỡng theo chi phí là trọng tâm của bài toán, và kết luận phụ thuộc giả định chi phí.** Dưới
-   chi phí cố định, τ\* = 0,0232 vững trong một dải tỷ lệ rộng; tính theo số tiền, lợi thế của nó so với
-   0,5 biến mất. Điều vững là đáy chi phí phẳng, nên chọn trong đáy đó theo năng lực thẩm định.
-5. Vụ bỏ lọt là **giới hạn của đặc trưng**: hai phần ba trông giống hệt giao dịch hợp lệ trên cả 5 đặc
-   trưng quan trọng nhất. Học có giám sát thắng rõ autoencoder (0,825 so với 0,329).
+2. Trong 20 tổ hợp, **mô hình quyết định nhiều hơn chiến lược xử lý mất cân bằng**. So ở cùng mức cân bằng
+   và tính cả phương sai huấn luyện, phần lớn khác biệt giữa trọng số lớp và SMOTE là do mức cân bằng; với
+   XGBoost không chiến lược nào hơn không xử lý, nên quy tắc đặt trước chọn **XGBoost không xử lý mất cân
+   bằng**. SMOTE + Tomek không thêm gì; undersampling nhanh nhưng kém ở mọi mức.
+3. Mô hình cuối đạt **PR-AUC 0,828 [0,747; 0,900]** trên tập kiểm thử; tại ngưỡng mặc định **recall 0,758
+   [0,674; 0,842]** với 187 cảnh báo/ngày — đạt tiêu chí theo ước lượng điểm, sát nút; khi chia theo thời
+   gian PR-AUC còn 0,773.
+4. **Chọn ngưỡng là trọng tâm của bài toán, và kết luận phụ thuộc giả định nghiệp vụ.** Dưới chi phí cố định,
+   hạ ngưỡng 0,5 → τ\* = 0,0191 tiết kiệm rõ (722 EUR trên tập kiểm thử) và τ\* vững trong dải tỷ lệ
+   15 : 1 – 75 : 1; tính theo số tiền, lợi thế chỉ còn là xu hướng. Đáy chi phí phẳng nằm ngoài ngân sách
+   thẩm định, nên **năng lực thẩm định quyết định ngưỡng mặc định**; và ngưỡng phải chọn trên dữ liệu mô phỏng
+   tương lai (forward-chaining), rồi theo dõi sau khi áp dụng.
+5. Vụ bỏ lọt là **giới hạn của đặc trưng**: 61% trông giống giao dịch hợp lệ trên cả 5 đặc trưng quan trọng
+   nhất. Học có giám sát thắng rõ autoencoder (0,828 so với 0,329).
 6. Ngưỡng được tách khỏi mô hình thành cấu hình của một hệ thống chạy được, nơi người dùng thấy ngay cái
-   giá của mỗi lựa chọn ngưỡng.
+   giá của mỗi lựa chọn ngưỡng — ước lượng trên điểm chọn ngưỡng, không trên tập kiểm thử — và theo dõi được
+   nó sau khi áp dụng.
 
 ---
 
@@ -904,6 +1063,7 @@ xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng 
     Trees.* Nature Machine Intelligence 2, 2020.
 16. F. Pedregosa và cộng sự. *Scikit-learn: Machine Learning in Python.* Journal of Machine Learning
     Research 12, 2011.
+17. C. Nadeau, Y. Bengio. *Inference for the Generalization Error.* Machine Learning 52(3), 2003.
 
 ---
 
@@ -913,11 +1073,11 @@ xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng 
 
 | Mã | Tiêu chí | Kết quả | Ở đâu |
 |---|---|---|---|
-| AC-M1 | PR-AUC test ≥ 0,75 | 0,825 [0,747; 0,896] — đạt theo ước lượng điểm | 7.2 |
-| AC-M2 | Recall ≥ 0,75 tại ngưỡng đề xuất | 0,811 [0,737; 0,884] — đạt theo ước lượng điểm | 7.2 |
-| AC-M3 | Đủ 20 tổ hợp | 20/20 | 6.2 |
-| AC-M4 | Không rò rỉ | 7/7 điểm kiểm, thành kiểm thử tự động | 4.3 |
-| AC-M5 | Tái lập, PR-AUC lệch < 0,001 | Lệch 0 | 7.5 |
+| AC-M1 | PR-AUC test ≥ 0,75 | 0,828 [0,747; 0,900] — đạt theo ước lượng điểm | 7.2 |
+| AC-M2 | Recall ≥ 0,75 tại ngưỡng đề xuất | 0,758 [0,674; 0,842] tại ngưỡng mặc định, 187 cảnh báo/ngày — đạt theo ước lượng điểm, sát nút, có điều kiện (giả định chi phí và ngân sách; ngày mới ~0,70) | 7.2, 8.3 |
+| AC-M3 | Đủ 20 tổ hợp | 20/20, thêm 48 tổ hợp ở cùng mức cân bằng | 6.2, 6.4 |
+| AC-M4 | Không rò rỉ | 7/7 điểm kiểm thành kiểm thử tự động, thêm kiểm thử canary; không gian lận nào trùng gần đúng giữa hai tập | 4.3 |
+| AC-M5 | Tái lập, PR-AUC lệch < 0,001 | Lệch 0 (lần xuất `xgb_none_v2`) | 7.5 |
 | AC-M6 | Khoảng tin cậy cho chỉ số chính | Mọi chỉ số chính | 7.2, 8.3 |
 | AC-M7 | Hai cách chia tập | Ba cách chia, có nhóm đối chứng | 7.3 |
 | AC-M8 | Độ nhạy theo tỷ lệ chi phí | 5 : 1 → 100 : 1 | 8.4 |
@@ -934,12 +1094,13 @@ xanh, gồm kiểm thử chống rò rỉ, đối chiếu phép tính ngưỡng 
 | Tải dữ liệu | `python scripts/download_data.py --mirror` | `data/creditcard.csv`, tự kiểm toàn vẹn |
 | EDA, thống kê | `notebooks/01_eda`, `02_statistics` | `reports/figures/01_*`, `02_*`, `feature_ranking.csv` |
 | Mô hình cơ sở | `notebooks/03_baseline` | `data/test_set.parquet`, `baseline_results.csv` |
-| Lưới 20 tổ hợp | `python scripts/run_grid.py`, rồi `notebooks/04_imbalance_strategies` | `grid_results.csv` (≈ 46 phút) |
-| Tinh chỉnh, tập kiểm thử | `python scripts/run_search.py`, rồi `notebooks/05_advanced_models` | `search_results.csv`, `final_test_metrics.csv`, `split_comparison.csv` |
-| Ngưỡng, chi phí | `notebooks/06_threshold_and_cost` | `threshold_comparison.csv`, `cost_sensitivity.csv`, `amount_cost_*.csv`, `block_threshold.csv`, `calibration.csv` |
+| Lưới 20 tổ hợp | `python scripts/run_grid.py` | `grid_results.csv` (≈ 46 phút) |
+| Lưới theo mức, CV lặp | `python scripts/run_ratio_grid.py`, `python scripts/run_repeated_cv.py`, rồi `notebooks/04_imbalance_strategies` (§5.8 chọn cấu hình cuối, khớp `src/config.py`) | `ratio_grid.csv`, `repeated_cv.csv`, `repeated_cv_tests.csv` (≈ 86 + 81 phút) |
+| Tinh chỉnh, tập kiểm thử | `python scripts/run_search.py`, rồi `notebooks/05_advanced_models` | `search_results.csv`, `final_test_metrics.csv`, `split_comparison.csv`, `final_choice.json` |
+| Ngưỡng, chi phí | `notebooks/06_threshold_and_cost` | `threshold_comparison.csv`, `cost_sensitivity.csv`, `amount_cost_*.csv`, `block_threshold.csv`, `calibration.csv`, `acceptance.csv`, `threshold_protocol.csv` |
 | Autoencoder, SHAP | `notebooks/06b_autoencoder`, `07_explainability` | `autoencoder_comparison.csv`, `shap_ranking.csv`, `error_analysis.csv` |
 | Hiện vật cho API | `notebooks/08_export_artifacts` | `models/*`, `data/sample_pool.json` |
-| Kiểm tra tái lập | `python scripts/check_reproducibility.py` | `reproducibility.csv` (≈ 71 phút) |
+| Kiểm tra tái lập | `python scripts/check_reproducibility.py` | `reproducibility.csv` (≈ 47 phút) |
 | Hệ thống | `docker compose up --build` | http://localhost:3000 |
 
 Môi trường: Python 3.12; phiên bản thư viện ghim trong `requirements.txt` trùng với lúc xuất hiện vật

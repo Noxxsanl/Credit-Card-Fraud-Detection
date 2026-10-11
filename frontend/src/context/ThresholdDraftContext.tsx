@@ -53,7 +53,7 @@ export function useThresholdDraft(): DraftValue {
 }
 
 export function ThresholdDraftProvider({ children }: { children: ReactNode }) {
-  const { threshold, scores } = useApp();
+  const { threshold, selection } = useApp();
   const [initialized, setInitialized] = useState(false);
   const [tau, setTauState] = useState(0.5);
   const [costFnInput, setCostFnInput] = useState("");
@@ -67,13 +67,20 @@ export function ThresholdDraftProvider({ children }: { children: ReactNode }) {
   const requestKey = useRef<string | null>(null);
   const controller = useRef<AbortController | null>(null);
 
-  // Khởi tạo một lần, ngay khi có ngưỡng hiện hành và điểm của tập kiểm thử. Đặt state trong lúc
-  // render (không trong effect) là cách React khuyên cho state dẫn xuất từ dữ liệu vừa đến.
-  if (!initialized && threshold && scores) {
+  // Khởi tạo một lần, ngay khi có ngưỡng hiện hành và điểm chọn ngưỡng. Đặt state trong lúc render
+  // (không trong effect) là cách React khuyên cho state dẫn xuất từ dữ liệu vừa đến. Chính sách mặc
+  // định có ràng buộc ngân sách thẩm định (docs/11 M1) thì ô ràng buộc mở sẵn với đúng ngân sách đó,
+  // để "Tối ưu" với tham số mặc định ra đúng ngưỡng mặc định.
+  if (!initialized && threshold && selection) {
     setInitialized(true);
     setTauState(threshold.current);
     setCostFnInput(String(threshold.cost_fn));
     setCostFpInput(String(threshold.cost_fp));
+    const budget = threshold.constraints?.alert_budget_per_day;
+    if (threshold.policy === "min_cost_within_budget" && budget) {
+      setConstraintType("max_alerts_per_day");
+      setConstraintValueInput(String(budget));
+    }
   }
 
   const costs = useMemo<Costs>(() => {

@@ -23,7 +23,7 @@ from . import errors
 from .config import API_PREFIX, Settings
 from .db import make_engine, make_session_factory, ping
 from .loader import ArtifactError, load_artifacts
-from .routes import metrics, replay, scoring, threshold, transactions
+from .routes import metrics, monitoring, replay, scoring, threshold, transactions
 from .schemas import ErrorResponse, HealthResponse
 from .services import runtime_settings
 
@@ -101,7 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             body["threshold"] = runtime_settings.current_threshold(session, loaded)[0]
         return body
 
-    for module in (scoring, transactions, threshold, metrics, replay):
+    for module in (scoring, transactions, threshold, metrics, replay, monitoring):
         app.include_router(module.router)
     return app
 

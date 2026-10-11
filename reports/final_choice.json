@@ -1,0 +1,11 @@
+{
+  "choice": "mặc định",
+  "model": "xgboost",
+  "strategy": "none",
+  "ratio": null,
+  "pr_auc_oof_diff_tuned_minus_default": {
+    "value": 0.00341868514831678,
+    "ci_low": -0.0028117380802288898,
+    "ci_high": 0.009722522435888028
+  }
+}

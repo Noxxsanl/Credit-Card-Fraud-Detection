@@ -35,3 +35,12 @@ export declare function lowerBound(sorted: ArrayLike<number>, x: number): number
 export declare function prepare(yTrue: ArrayLike<number>, yScore: ArrayLike<number>): Prepared;
 export declare function counts(prepared: Prepared, tau: number): Counts;
 export declare function metricsAt(prepared: Prepared, tau: number, options: CostOptions): ThresholdMetrics;
+
+export interface DecodedScores {
+  prepared: Prepared;
+  sampleFraction: number;
+  days: number;
+}
+
+export declare function fromSorted(all: ArrayLike<number>, positives: ArrayLike<number>): Prepared;
+export declare function decodeSortedScores(buffer: ArrayBuffer): DecodedScores;

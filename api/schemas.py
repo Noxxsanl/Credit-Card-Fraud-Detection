@@ -248,16 +248,27 @@ class ReviewResponse(BaseModel):
 # Ngưỡng — API-09 … API-12
 # --------------------------------------------------------------------------
 
+class SelectionInfo(BaseModel):
+    method: str = Field(description="Cách sinh điểm chọn ngưỡng: temporal_forward_chaining hoặc random_cv")
+    n: int
+    n_fraud: int
+    sample_fraction: float = Field(description="Phần luồng giao dịch mà các điểm này đại diện")
+    days: float = Field(description="Số ngày mà các điểm này trải qua — để quy đổi cảnh báo mỗi ngày")
+
+
 class ThresholdState(BaseModel):
     current: float
     source: ThresholdSource
-    default: float = Field(description="τ* trong threshold.json, chọn trên out-of-fold")
+    default: float = Field(description="Ngưỡng mặc định trong threshold.json, chọn trên điểm out-of-fold")
+    policy: str = Field(description="Cách chọn ngưỡng mặc định, ví dụ min_cost_within_budget (docs/11 M1)")
+    constraints: dict[str, float] = Field(description="Ràng buộc vận hành của chính sách, ví dụ alert_budget_per_day")
     cost_fn: float
     cost_fp: float
     alternatives: dict[str, float]
     model_version: str
     block_threshold: float = Field(description="Từ điểm này trở lên decision = block (khi ≥ current), 05 §2")
     block_min_precision: float = Field(description="Precision tối thiểu trên out-of-fold dùng để chọn block_threshold")
+    selection: SelectionInfo = Field(description="Điểm mà preview, optimize và UI-D1 dùng (docs/11 M3)")
 
 
 class ThresholdUpdate(BaseModel):
@@ -318,10 +329,11 @@ class OptimizeResponse(BaseModel):
     constraint_binding: bool = Field(description="true: ràng buộc đẩy nghiệm khỏi cực tiểu chi phí")
     constraint_satisfied: bool
     selected_on: Literal["out_of_fold"] = "out_of_fold"
+    selection_method: str = Field(description="temporal_forward_chaining hoặc random_cv")
     cost_fn: float
     cost_fp: float
-    metrics_at_optimal: ThresholdMetricsOut = Field(description="Đo trên tập kiểm thử tại ngưỡng đã chọn")
-    metrics_at_optimal_oof: ThresholdMetricsOut = Field(description="Trên out-of-fold, nơi ngưỡng được chọn")
+    metrics_at_optimal: ThresholdMetricsOut = Field(
+        description="Trên điểm chọn ngưỡng, nơi ngưỡng được chọn — không đo trên tập kiểm thử (docs/11 M3)")
     curve: list[CurvePoint]
     curve_source: Literal["out_of_fold"] = "out_of_fold"
 
@@ -345,6 +357,44 @@ class SampleList(BaseModel):
     categories: dict[str, dict]
     model_version: str
     reference_threshold: float
+
+
+class MonitoringExpected(BaseModel):
+    alert_rate: float = Field(description="Tỷ lệ cảnh báo kỳ vọng ở ngưỡng hiện hành, trên điểm chọn ngưỡng")
+    alerts_per_day: float
+    precision: float
+    recall: float
+    source: str = Field(description="Cách sinh điểm chọn ngưỡng")
+
+
+class MonitoringBucket(BaseModel):
+    start_hour: float | None = Field(description="Đầu khoảng, theo giờ của dữ liệu (Time); null ở dòng tổng")
+    end_hour: float | None
+    n_scored: int
+    n_alerts: int
+    alert_rate: float
+    alert_rate_ci: list[float] = Field(description="Khoảng tin cậy Wilson 95%")
+    alerts_per_day: float = Field(description="Tỷ lệ cảnh báo quy ra mỗi ngày trên toàn luồng giao dịch")
+    n_reviewed: int
+    n_confirmed: int
+    precision_reviewed: float | None = Field(description="Precision theo kết luận thẩm định")
+    precision_ci: list[float] | None
+    n_labelled_fraud: int
+    n_caught: int
+    recall_labelled: float | None = Field(description="Recall theo nhãn thật, khi giao dịch có nhãn")
+    recall_ci: list[float] | None
+    flags: list[Literal["alerts_above_expected", "precision_below_expected", "recall_below_expected", "over_budget"]]
+
+
+class MonitoringReport(BaseModel):
+    model_version: str
+    threshold: float
+    bucket_hours: float
+    transactions_per_day: float
+    alert_budget_per_day: float | None
+    expected: MonitoringExpected
+    overall: MonitoringBucket
+    buckets: list[MonitoringBucket]
 
 
 class HealthResponse(BaseModel):

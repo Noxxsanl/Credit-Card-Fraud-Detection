@@ -175,6 +175,18 @@ python scripts/run_grid.py            # chạy thật
 python scripts/run_grid.py --status   # xem tiến độ
 ```
 
+Rồi hai script bổ sung sau review ([docs/11](docs/11-review-ml-va-ke-hoach-sua.md)) — notebook 04 §5.8 đọc kết
+quả của chúng để chọn cấu hình cuối, và tìm kiếm siêu tham số cho notebook 05:
+
+```bash
+python scripts/run_ratio_grid.py      # lưới theo mức cân bằng, 48 tổ hợp (~1,5 giờ)
+python scripts/run_repeated_cv.py     # CV lặp cho các cặp cần kết luận (~1,5 giờ)
+python scripts/run_search.py          # RandomizedSearchCV 30 lần thử (~15–20 phút)
+```
+
+Mọi script chỉ dùng lại điểm lưu khi dấu vân tay cấu hình (`config_hash`) khớp, nên sửa mã là tổ hợp
+liên quan tự chạy lại. Chi tiết và thời gian: [docs/lenh-chay.md §3.7](docs/lenh-chay.md).
+
 ## Quy trình
 
 | Notebook | Nội dung | Trạng thái |
@@ -182,9 +194,9 @@ python scripts/run_grid.py --status   # xem tiến độ
 | `01_eda.ipynb` | Toàn vẹn dữ liệu, 8 biểu đồ EDA bắt buộc → `reports/figures/01_*.png` | ✅ |
 | `02_statistics.ipynb` | Mann–Whitney U, hiệu chỉnh BH, Cohen's d và Cliff's delta → `reports/feature_ranking.csv` | ✅ |
 | `03_baseline.ipynb` | Mô hình rỗng + Logistic Regression + Decision Tree, bảng mốc cho G-2 → `data/test_set.parquet` | ✅ |
-| `04_imbalance_strategies.ipynb` | Lưới 5 chiến lược × 4 mô hình → `reports/grid_results.csv` | ✅ |
+| `04_imbalance_strategies.ipynb` | Lưới 5 chiến lược × 4 mô hình → `reports/grid_results.csv`; cùng mức cân bằng (`ratio_grid.csv`), CV lặp (`repeated_cv_tests.csv`), quy tắc chọn cấu hình cuối → `src/config.py` | ✅ |
 | `05_advanced_models.ipynb` | Tinh chỉnh XGBoost, đánh giá trên tập test kèm khoảng tin cậy, chia theo thời gian, rà soát rò rỉ → `reports/final_test_metrics.csv` | ✅ |
-| `06_threshold_and_cost.ipynb` | Chọn ngưỡng theo chi phí nghiệp vụ trên out-of-fold, độ nhạy theo tỷ lệ chi phí → `reports/threshold_comparison.csv`. Mục 6: chi phí theo số tiền, ngưỡng đề xuất chặn, độ tin cậy của điểm | ✅ |
+| `06_threshold_and_cost.ipynb` | Chọn ngưỡng trên điểm forward-chaining theo thời gian: ngưỡng mặc định = chi phí nhỏ nhất trong ngân sách thẩm định, độ nhạy theo tỷ lệ chi phí, nghiệm thu AC-M2, đối chứng ngày 1 → ngày 2 → `reports/threshold_comparison.csv`, `acceptance.csv`. Mục 6: chi phí theo số tiền, ngưỡng đề xuất chặn, độ tin cậy của điểm | ✅ |
 | `06b_autoencoder.ipynb` | (Tùy chọn) autoencoder chỉ học lớp hợp lệ, so với mô hình có giám sát | ✅ |
 | `07_explainability.ipynb` | SHAP toàn cục, đối chiếu xếp hạng thống kê, phân tích lỗi → `reports/shap_ranking.csv` | ✅ |
 | `08_export_artifacts.ipynb` | Xuất hiện vật cho API → `models/*`, `data/sample_pool.json` | ✅ |
@@ -197,12 +209,12 @@ làm **phương án B** — API FastAPI + PostgreSQL và giao diện web riêng 
 | Tiêu chí của mốc | Hiện trạng |
 |---|---|
 | Hiện vật đã đủ | Đủ: `model.joblib`, `explainer.joblib`, `metrics.json`, `threshold.json`, `oof_scores.npz`, `sample_pool.json` — kiểm bằng `tests/test_artifacts.py` (từ 2026-10-09 API không cần `explainer.joblib` nữa) |
-| Không còn nợ việc ở phần mô hình | Giai đoạn 0–6 xong 38/38 việc, gồm cả việc tùy chọn T-34; AC-M1…AC-M8 đạt |
-| Tái lập | T-38 đạt: chạy lại 01 → 08 trong kernel sạch, PR-AUC lệch 0 |
+| Không còn nợ việc ở phần mô hình | Giai đoạn 0–6 xong 38/38 việc, gồm cả việc tùy chọn T-34; AC-M1…AC-M8 đạt — AC-M1, AC-M2 theo ước lượng điểm, AC-M2 có điều kiện (sau review 2026-10-10: [docs/11](docs/11-review-ml-va-ke-hoach-sua.md)) |
+| Tái lập | T-38 đạt: chạy lại 01 → 08 trong kernel sạch, PR-AUC lệch 0 (lần cuối 2026-10-11, mô hình `xgb_none_v2`) |
 
 Lưới an toàn vẫn giữ: nếu giai đoạn 7–8 trễ tới mức đe doạ ngày báo cáo (rủi ro R-03, R-08), quay về
 **phương án A** — Streamlit trong `app.py`, rút gọn giao diện và dồn thời gian cho báo cáo. `app.py` đã
-nạp đúng `models/model.joblib` và τ\* của `threshold.json`, nên dùng được ngay làm phương án dự phòng
+nạp đúng `models/model.joblib` và ngưỡng mặc định của `threshold.json`, nên dùng được ngay làm phương án dự phòng
 khi Docker không chạy được trong buổi bảo vệ.
 
 ## Chạy khi phát triển (không đóng gói)
@@ -259,6 +271,7 @@ Toàn bộ đặc tả và thiết kế nằm trong [docs/](docs/) — bắt đ�
 | 08 | [Kế hoạch kiểm thử](docs/08-ke-hoach-kiem-thu.md) | Chứng minh hệ thống đúng bằng cách nào |
 | 09 | [Kế hoạch triển khai](docs/09-ke-hoach-trien-khai.md) | Ai làm gì, ngày nào, xong là thế nào |
 | 10 | [Vận hành và tái lập](docs/10-van-hanh-tai-lap.md) | Chạy lại toàn bộ từ đầu bằng lệnh gì |
+| 11 | [Review ML và kế hoạch sửa](docs/11-review-ml-va-ke-hoach-sua.md) | Phần mô hình còn yếu ở đâu, đã sửa gì |
 
 ## Lưu ý về metric
 

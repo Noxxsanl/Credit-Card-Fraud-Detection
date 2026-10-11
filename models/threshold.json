@@ -1,18 +1,19 @@
 {
-  "default_threshold": 0.023172983899712563,
-  "selection_method": "min_expected_cost",
-  "selected_on": "out_of_fold",
-  "cost_false_negative": 122.21,
+  "default_threshold": 0.2675439715385437,
+  "selection_method": "min_cost_within_budget",
+  "selected_on": "temporal_out_of_fold",
+  "cost_false_negative": 115.94,
   "cost_false_positive": 5.0,
   "alternatives": {
-    "min_expected_cost": 0.023172983899712563,
-    "max_f1": 0.720512330532074,
-    "recall_at_least_90": 0.0005369935533963144,
-    "budget_200_alerts": 0.9624789953231812,
+    "min_expected_cost": 0.019058020785450935,
+    "min_cost_within_budget": 0.2675439715385437,
+    "max_f1": 0.6433648467063904,
+    "recall_at_least_90": 0.0001083674724213779,
+    "budget_200_alerts": 0.26641756296157837,
     "default_naive": 0.5
   },
-  "model_version": "xgb_scaleposweight_v1",
-  "trained_at": "2026-09-28T08:01:09Z",
+  "model_version": "xgb_none_v2",
+  "trained_at": "2026-10-11T10:15:56Z",
   "constraints": {
     "min_recall": 0.9,
     "alert_budget_per_day": 200.0

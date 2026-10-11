@@ -136,8 +136,9 @@
 
   /** Ngưỡng gợi ý sẵn của UI-03 — khóa của GET /threshold → alternatives, theo thứ tự 07 §5. */
   const ALTERNATIVES = [
-    { key: "default_naive", label: "Mặc định 0,5", hint: "Không có cơ sở cho dữ liệu mất cân bằng 1:578" },
-    { key: "min_expected_cost", label: "Cực tiểu chi phí kỳ vọng (τ*)", hint: "Chọn trên out-of-fold với chi phí của threshold.json" },
+    { key: "default_naive", label: "0,5 — mặc định của thư viện", hint: "Không có cơ sở cho dữ liệu mất cân bằng 1:600" },
+    { key: "min_cost_within_budget", label: "Chi phí nhỏ nhất trong ngân sách thẩm định (mặc định)", hint: "Cực tiểu chi phí trong các ngưỡng không vượt ngân sách cảnh báo/ngày" },
+    { key: "min_expected_cost", label: "Cực tiểu chi phí, không ràng buộc", hint: "Chọn trên out-of-fold với chi phí của threshold.json — có thể vượt ngân sách" },
     { key: "max_f1", label: "F1 lớn nhất", hint: "Dùng khi không ước lượng được chi phí" },
     { key: "recall_at_least_90", label: "Ràng buộc recall ≥ 90%", hint: "Ngưỡng lớn nhất còn giữ recall 90% trên out-of-fold" },
     { key: "budget_200_alerts", label: "Ngân sách 200 lượt thẩm định/ngày", hint: "Ngưỡng nhỏ nhất còn nằm trong ngân sách trên out-of-fold" },
@@ -227,6 +228,27 @@
     return body;
   }
 
+  /** GET trả nhị phân — điểm chọn ngưỡng của GET /threshold/oof-scores (docs/11 M3). */
+  async function apiBinary(path) {
+    let response;
+    try {
+      response = await fetch(API_BASE + path);
+    } catch (error) {
+      throw new ApiError(0, "NETWORK", `Không kết nối được API tại ${API_BASE}. API đã chạy chưa?`);
+    }
+    if (!response.ok) {
+      let err = {};
+      try {
+        err = ((await response.json()) || {}).error || {};
+      } catch {
+        err = {};
+      }
+      throw new ApiError(response.status, err.code || `HTTP_${response.status}`,
+        err.message || `Lỗi HTTP ${response.status}`, err.details);
+    }
+    return response.arrayBuffer();
+  }
+
   const query = (params) => {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) if (v !== null && v !== undefined && v !== "") q.set(k, v);
@@ -235,8 +257,30 @@
   };
 
   // --------------------------------------------------------------------------
-  // Điểm của tập kiểm thử — UI-D1. Giữ ngoài Alpine (không phản ứng).
+  // Hai bộ điểm của UI-D1, giữ ngoài Alpine (không phản ứng), mỗi bộ một vai trò (docs/11 M3):
+  // - Selection — điểm chọn ngưỡng (out-of-fold theo thời gian của tập huấn luyện), GET
+  //   /threshold/oof-scores. Màn hình Ngưỡng tính MỌI con số trên bộ này: kéo thanh trượt là đang
+  //   chọn ngưỡng, nên không được nhìn tập kiểm thử (ML-08).
+  // - Scores — điểm tập kiểm thử, chỉ để BÁO CÁO ngưỡng đang áp dụng (dòng đầu UI-01, ma trận UI-04).
   // --------------------------------------------------------------------------
+
+  const Selection = {
+    prepared: null,
+    sampleFraction: null,
+    days: null,
+    metrics(tau, costFn, costFp) {
+      return FraudThreshold.metricsAt(this.prepared, tau, {
+        costFn,
+        costFp,
+        sampleFraction: this.sampleFraction,
+        days: this.days,
+      });
+    },
+    /** Quy một đại lượng đếm trên điểm chọn ngưỡng ra mỗi ngày trên toàn luồng giao dịch. */
+    perDay(value) {
+      return value / this.sampleFraction / this.days;
+    },
+  };
 
   const Scores = {
     prepared: null,
@@ -276,6 +320,8 @@
       thresholdError: null,
       scoresReady: false,
       scoresError: null,
+      selectionReady: false,
+      selectionError: null,
       toasts: [],
 
       get title() {
@@ -298,7 +344,7 @@
           this.route = routeFromHash();
         });
         await this.checkHealth();
-        await Promise.allSettled([this.loadThreshold(), this.loadScores(), this.loadModelInfo()]);
+        await Promise.allSettled([this.loadThreshold(), this.loadScores(), this.loadSelection(), this.loadModelInfo()]);
         setInterval(() => this.checkHealth(), 15000);
       },
 
@@ -309,6 +355,7 @@
           this.noteModel(h.model_version);
           if (!this.threshold) this.loadThreshold();
           if (!this.scoresReady) this.loadScores();
+          if (!this.selectionReady) this.loadSelection();
           if (!this.trainedAt) this.loadModelInfo();
         } catch (e) {
           const details = e.details || {};
@@ -345,6 +392,19 @@
           this.scoresError = null;
         } catch (e) {
           this.scoresError = e.message;
+        }
+      },
+
+      async loadSelection() {
+        try {
+          const decoded = FraudThreshold.decodeSortedScores(await apiBinary("/threshold/oof-scores"));
+          Selection.prepared = decoded.prepared;
+          Selection.sampleFraction = decoded.sampleFraction;
+          Selection.days = decoded.days;
+          this.selectionReady = true;
+          this.selectionError = null;
+        } catch (e) {
+          this.selectionError = e.message;
         }
       },
 
@@ -875,7 +935,7 @@
         costFpInput: "",
         constraintType: "none",
         constraintValueInput: "",
-        m: null,                // chỉ số tại τ đang xem (tập kiểm thử, tính tại máy khách)
+        m: null,                // chỉ số tại τ đang xem (điểm chọn ngưỡng, tính tại máy khách)
         appliedM: null,         // chỉ số tại ngưỡng đang áp dụng
         latencyMs: null,
         opt: null,              // phản hồi POST /threshold/optimize
@@ -888,16 +948,23 @@
         init() {
           const tryInit = () => {
             const s = Alpine.store("app");
-            if (this.initialized || !s.threshold || !s.scoresReady) return;
+            if (this.initialized || !s.threshold || !s.selectionReady) return;
             this.initialized = true;
             this.tau = s.threshold.current;
             this.costFnInput = String(s.threshold.cost_fn);
             this.costFpInput = String(s.threshold.cost_fp);
+            // Chính sách mặc định có ràng buộc ngân sách (docs/11 M1): mở sẵn ô ràng buộc với đúng
+            // ngân sách đó, để "Tối ưu" với tham số mặc định ra đúng ngưỡng mặc định
+            const budget = (s.threshold.constraints || {}).alert_budget_per_day;
+            if (s.threshold.policy === "min_cost_within_budget" && budget) {
+              this.constraintType = "max_alerts_per_day";
+              this.constraintValueInput = String(budget);
+            }
             this.recalc();
             this.optimize();
           };
           this.$watch("$store.app.threshold", tryInit);
-          this.$watch("$store.app.scoresReady", tryInit);
+          this.$watch("$store.app.selectionReady", tryInit);
           this.$watch("$store.app.route", (route) => {
             if (route === "threshold") this.$nextTick(() => this.drawChart());
           });
@@ -948,8 +1015,8 @@
           const t = this.store.threshold;
           const fn = c.valid ? c.fn : t.cost_fn;
           const fp = c.valid ? c.fp : t.cost_fp;
-          this.m = Scores.metrics(this.tau, fn, fp);
-          this.appliedM = Scores.metrics(t.current, fn, fp);
+          this.m = Selection.metrics(this.tau, fn, fp);
+          this.appliedM = Selection.metrics(t.current, fn, fp);
           this.scheduleChart();
         },
 
@@ -1057,8 +1124,8 @@
             list.push({ key: "applied", label: "Ngưỡng đang áp dụng", hint: "Người dùng đã đặt", value: t.current });
           }
           return list.map((p) => {
-            const m = Scores.metrics(p.value, fn, fp);
-            return { ...p, recall: m.recall, alertsPerDay: m.alerts_per_day, costPerDay: Scores.perDay(m.expected_cost), tp: m.tp, nPos: m.tp + m.fn };
+            const m = Selection.metrics(p.value, fn, fp);
+            return { ...p, recall: m.recall, alertsPerDay: m.alerts_per_day, costPerDay: Selection.perDay(m.expected_cost), tp: m.tp, nPos: m.tp + m.fn };
           });
         },
 
@@ -1071,7 +1138,7 @@
         deltaInfo(field, { goodIf = null, perDay = false, unit = "" } = {}) {
           const d = this.delta(field);
           if (d === null) return null;
-          const v = perDay ? Scores.perDay(d) : d;
+          const v = perDay ? Selection.perDay(d) : d;
           if (Math.abs(v) < 0.5) return { text: "như ngưỡng đang áp dụng", cls: "" };
           const text = `${v > 0 ? "▲ +" : "▼ −"}${fmt.int(Math.abs(v))}${unit} so với ngưỡng đang áp dụng`;
           const cls = goodIf === null ? "" : (v > 0) === (goodIf === "up") ? "delta-good" : "delta-bad";
@@ -1079,7 +1146,7 @@
         },
 
         perDay(value) {
-          return value == null ? null : Scores.perDay(value);
+          return value == null ? null : Selection.perDay(value);
         },
 
         async apply() {
@@ -1145,8 +1212,8 @@
           if (!this.opt) return "";
           const o = this.opt;
           const m = o.metrics_at_optimal;
-          return `Đường cong chi phí mỗi ngày theo ngưỡng, trục hoành thang log. Cực tiểu tại τ = ${fmt.tau(o.optimal_threshold)}; `
-            + `tại đó trên tập kiểm thử bắt ${m.tp}/${m.tp + m.fn} gian lận với ${fmt.int(m.alerts_per_day)} cảnh báo mỗi ngày.`;
+          return `Đường cong chi phí mỗi ngày theo ngưỡng, trục hoành thang log. Tối ưu tại τ = ${fmt.tau(o.optimal_threshold)}; `
+            + `tại đó trên điểm chọn ngưỡng bắt ${m.tp}/${m.tp + m.fn} gian lận với ${fmt.int(m.alerts_per_day)} cảnh báo mỗi ngày.`;
         },
       };
     });
@@ -1163,12 +1230,46 @@
         loading: false,
         error: null,
         s: {},                  // các mục của metrics.json
+        monitoring: null,       // GET /monitoring — theo dõi vận hành (docs/11 M2)
+        monitoringError: null,
 
         init() {
           this.$watch("$store.app.route", (route) => {
-            if (route === "performance") this.load();
+            if (route === "performance") {
+              this.load();
+              this.loadMonitoring();
+            }
           });
-          if (Alpine.store("app").route === "performance") this.load();
+          // Ngưỡng áp dụng đổi thì tỷ lệ cảnh báo đổi theo
+          window.addEventListener("threshold-changed", () => this.loadMonitoring());
+          if (Alpine.store("app").route === "performance") {
+            this.load();
+            this.loadMonitoring();
+          }
+        },
+
+        async loadMonitoring() {
+          try {
+            this.monitoring = await api("/monitoring?bucket_hours=6");
+            this.monitoringError = null;
+          } catch (e) {
+            this.monitoringError = e.message;
+          }
+        },
+
+        get monitoringRows() {
+          if (!this.monitoring) return [];
+          return [...this.monitoring.buckets, { ...this.monitoring.overall, total: true }];
+        },
+
+        monitoringFlags(b) {
+          const text = {
+            alerts_above_expected: "cảnh báo nhiều hơn kỳ vọng",
+            precision_below_expected: "precision thẩm định thấp hơn kỳ vọng",
+            recall_below_expected: "recall thấp hơn kỳ vọng",
+            over_budget: "vượt ngân sách thẩm định",
+          };
+          return b.flags.length ? b.flags.map((f) => text[f] || f).join("; ") : "trong kỳ vọng";
         },
 
         async load() {
@@ -1231,8 +1332,8 @@
           return [
             { key: "pr_auc", label: "PR-AUC", ...h.pr_auc },
             { key: "roc_auc", label: "ROC-AUC", ...h.roc_auc },
-            { key: "recall", label: "Recall tại τ*", ...h.recall },
-            { key: "precision", label: "Precision tại τ*", ...h.precision },
+            { key: "recall", label: "Recall tại ngưỡng mặc định", ...h.recall },
+            { key: "precision", label: "Precision tại ngưỡng mặc định", ...h.precision },
           ];
         },
 

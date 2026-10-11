@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from api.services import scoring, thresholding
 from api.services.transactions import raw_features
 from api.models_orm import Transaction
+from src.config import DEFAULT_COST_FN, DEFAULT_COST_FP
 from src.features import RAW_REQUIRED_COLUMNS
 
 
@@ -116,14 +117,14 @@ def test_block_threshold_is_chosen_by_precision_on_out_of_fold(loaded):
     table = cost_curve(loaded.oof["y_true"], loaded.oof["y_score"], thresholds=loaded.oof_candidates)
     tail = table[(table["threshold"] >= tau_block) & (table["alerts"] > 0)]
     assert len(tail) and (tail["precision"] >= BLOCK_MIN_PRECISION).all()
-    assert loaded.default_threshold < tau_block < 1
-    # Trên tập kiểm thử, ở τ*: dải review còn chứa gian lận thật để người thẩm định bắt (luật cũ
-    # 3τ để dải này rỗng gian lận), và chặn tự động rất ít khách hợp lệ
+    assert 0 < tau_block < 1
+    # Trên tập kiểm thử, ở ngưỡng mặc định: "block" bắt đầu từ max(τ, τ_chặn), và chặn tự động rất ít
+    # khách hợp lệ. Ngưỡng mặc định đã có precision ≥ 95% thì không còn dải review — đúng 05 §2.
     y, s, tau = loaded.y_test, loaded.s_test, loaded.default_threshold
     decided = scoring.decisions(s, tau, tau_block)
-    assert y[decided == "review"].sum() > 0
+    assert ((decided == "block") == (s >= max(tau, tau_block))).all()
     blocked = decided == "block"
-    assert y[blocked].mean() >= 0.95
+    assert blocked.any() and y[blocked].mean() >= 0.9
 
 
 def _rows(loaded, frame, prefix):
@@ -198,22 +199,28 @@ def test_t47_preview_service_is_a_few_milliseconds(loaded):
     timings = []
     for value in np.linspace(0.001, 0.999, 200):
         started = time.perf_counter()
-        thresholding.preview(loaded, value, 122.21, 5.0)
+        thresholding.preview(loaded, value, DEFAULT_COST_FN, DEFAULT_COST_FP)
         timings.append((time.perf_counter() - started) * 1000)
     print(f"\nT-47: tính preview trung vị {np.median(timings):.2f} ms, p95 {np.percentile(timings, 95):.2f} ms")
     assert np.median(timings) < 10
 
 
 def test_optimize_matches_the_notebook_alternatives(loaded):
-    """Chọn trên out-of-fold như notebook 06: chi phí mặc định ra đúng τ*, và ràng buộc recall
-    chọn ra đúng ngưỡng recall ≥ 90% nếu chi phí cực tiểu trong vùng khả thi nằm ở biên."""
-    result = thresholding.optimize(loaded, 122.21, 5.0)
-    assert result["optimal_threshold"] == loaded.default_threshold
-    constrained = thresholding.optimize(loaded, 122.21, 5.0, "min_recall", 0.9)
-    assert constrained["optimal_threshold"] == loaded.threshold["alternatives"]["recall_at_least_90"]
-    assert constrained["metrics_at_optimal_oof"]["recall"] >= 0.9
+    """Chọn trên điểm out-of-fold như notebook 08: chi phí mặc định ra đúng phương án min_expected_cost;
+    thêm ngân sách mặc định ra đúng ngưỡng mặc định (min_cost_within_budget, docs/11 M1); ràng buộc
+    recall ≥ 90% không vượt ngưỡng lớn nhất còn giữ recall đó."""
+    cost_fn, cost_fp = loaded.threshold["cost_false_negative"], loaded.threshold["cost_false_positive"]
+    alternatives = loaded.threshold["alternatives"]
+    result = thresholding.optimize(loaded, cost_fn, cost_fp)
+    assert result["optimal_threshold"] == alternatives["min_expected_cost"]
+    budget = loaded.threshold["constraints"]["alert_budget_per_day"]
+    within = thresholding.optimize(loaded, cost_fn, cost_fp, "max_alerts_per_day", budget)
+    assert within["optimal_threshold"] == alternatives["min_cost_within_budget"] == loaded.default_threshold
+    constrained = thresholding.optimize(loaded, cost_fn, cost_fp, "min_recall", 0.9)
+    assert constrained["optimal_threshold"] <= alternatives["recall_at_least_90"]
+    assert constrained["metrics_at_optimal"]["recall"] >= 0.9
 
 
 def test_optimize_reports_infeasible_constraints(loaded):
-    result = thresholding.optimize(loaded, 122.21, 5.0, "max_alerts_per_day", 0.001)
+    result = thresholding.optimize(loaded, DEFAULT_COST_FN, DEFAULT_COST_FP, "max_alerts_per_day", 0.001)
     assert result["constraint_satisfied"] is False and result["constraint_binding"] is True

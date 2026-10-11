@@ -333,7 +333,7 @@ export function TxDrawer() {
                 <p className="mt-2 text-[12.5px] text-muted">
                   Giá trị cơ sở cộng mọi đóng góp bằng f(x) = {fmt.num(exp.margin, 2)}; điểm rủi ro = 1 / (1 + e<sup>−f(x)</sup>) ={" "}
                   {fmt.score(waterfall.probability)}. Vạch dọc là ngưỡng hiện hành quy về cùng thang ({fmt.num(waterfall.tauLogit, 2)}).
-                  Giá trị cơ sở cao vì tính theo trọng số huấn luyện (scale_pos_weight ≈ 600).
+                  Giá trị cơ sở là điểm xuất phát của mô hình khi chưa xét đặc trưng nào, cùng thang log-odds.
                 </p>
                 {exp.top_positive.length < 5 && (
                   <p className="mt-2 text-[12.5px] text-muted">

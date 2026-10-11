@@ -35,9 +35,10 @@ REPLAY_WRITE_BATCH = 100
 MAX_REPORTED_REJECTIONS = 100
 MAX_UPLOAD_RESULTS = 200
 
-#: 05 §2 — chỉ "đề xuất chặn" khi trên out-of-fold, mọi ngưỡng từ mức đó trở lên đều có ít nhất
-#: 95% cảnh báo là gian lận thật. Với mô hình hiện tại: ngưỡng ≈ 0,9735; trên tập kiểm thử chặn
-#: 70 giao dịch, 69 là gian lận (luật cũ "≥ 3τ" chặn 96, trong đó 19 khách hợp lệ).
+#: 05 §2 — chỉ "đề xuất chặn" khi trên điểm chọn ngưỡng (out-of-fold), mọi ngưỡng từ mức đó trở lên đều
+#: có ít nhất 95% cảnh báo là gian lận thật. Với mô hình xgb_none_v2: ngưỡng ≈ 0,9995; trên tập kiểm thử
+#: chặn 7 giao dịch, cả 7 là gian lận, các cảnh báo còn lại vào dải "cần thẩm định" (notebook 06 §6.2;
+#: mức 90% cho ≈ 0,612, chặn 70 gian lận + 1 hợp lệ — chọn mức nào là quyết định nghiệp vụ).
 BLOCK_MIN_PRECISION = 0.95
 
 # 127.0.0.1 chứ không phải localhost: trên Windows "localhost" thử ::1 trước, và cổng chỉ mở trên

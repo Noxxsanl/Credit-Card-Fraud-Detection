@@ -10,9 +10,10 @@ Quy trình ở docs/10 §6, viết thành một lệnh:
 
 Kết quả ghi vào reports/reproducibility.csv.
 
-Lưu ý: notebook 04 và 05 đọc điểm lưu của scripts/run_grid.py và scripts/run_search.py
-nếu có. Script này KHÔNG chạy lại hai bước đó (45 + 20 phút); notebook 08 tự tính lại
-điểm out-of-fold của mô hình được chọn và so với điểm lưu của lưới.
+Lưu ý: notebook 04 và 05 đọc điểm lưu của scripts/run_grid.py, run_ratio_grid.py,
+run_repeated_cv.py và run_search.py. Script này KHÔNG chạy lại bốn bước đó (khoảng 3,5 giờ).
+Từ review 2026-10-10 điểm lưu chỉ được dùng khi ``config_hash`` khớp cấu hình hiện tại, và
+notebook 08 tự tính lại điểm out-of-fold của mô hình được chọn rồi so với điểm lưu của lưới.
 
 Chạy:
     python scripts/check_reproducibility.py              # 01 → 08, khoảng 45 phút

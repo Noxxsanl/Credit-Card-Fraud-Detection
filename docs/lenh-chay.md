@@ -191,6 +191,56 @@ làm y như vậy, hoặc đặt `$env:PYTHONIOENCODING = "utf-8"` trước khi 
 Cùng lý do đó, `reconfigure` dùng `line_buffering=True` — nếu không, đầu ra bị chuyển
 hướng vào `grid_run.log` sẽ bị đệm theo khối và người chạy không thấy gì suốt nhiều phút.
 
+### 3.7 Sau review ML (2026-10-11): lưới theo mức cân bằng và CV lặp
+
+Hai script mới, chạy **sau** `run_grid.py` và **trước** notebook 04. Phần vì sao:
+[11](11-review-ml-va-ke-hoach-sua.md) M4, M5, m2 và [04 §3.6](04-thiet-ke-mo-hinh-ml.md).
+
+```powershell
+# 1. Lưới theo mức: 4 mô hình × 3 chiến lược × r ∈ {0,02; 0,1; 0,3; 1} = 48 tổ hợp
+.\.venv\Scripts\python.exe scripts\run_ratio_grid.py 2>&1 | Tee-Object ratio_grid_run.log
+
+# 2. CV lặp cho các cấu hình cần kết luận — đọc grid_results.csv và ratio_grid.csv
+.\.venv\Scripts\python.exe scripts\run_repeated_cv.py 2>&1 | Tee-Object repeated_cv_run.log
+
+# 3. Chạy notebook 04: §5.8 áp quy tắc chọn cấu hình cuối và DỪNG nếu src/config.py
+#    (FINAL_MODEL, FINAL_STRATEGY, FINAL_RATIO) chưa khớp — sửa config rồi chạy lại notebook
+.\.venv\Scripts\python.exe -m jupyter nbconvert --to notebook --execute --inplace `
+    --ExecutePreprocessor.timeout=7200 notebooks\04_imbalance_strategies.ipynb
+```
+
+| Lệnh | Tác dụng | Thời gian (12 lõi) |
+|---|---|---|
+| `run_ratio_grid.py` | 48 tổ hợp, ghi điểm lưu sau mỗi tổ hợp, nối tiếp được | ~86 phút |
+| `run_ratio_grid.py --smoke` | 12.000 dòng, ghi ra tệp `_smoke` riêng | ~1 phút |
+| `run_ratio_grid.py --status` | chỉ in tiến độ điểm lưu — an toàn khi đang chạy | tức thì |
+| `run_ratio_grid.py --fresh` | bỏ điểm lưu, chạy lại từ đầu | như dòng đầu |
+| `run_repeated_cv.py` | `RepeatedStratifiedKFold`: XGBoost 5 × 5 fold cho mọi cấu hình trong 0,01 PR-AUC của cấu hình cao nhất (hai lưới), Random Forest 3 × 5 fold cho hai khẳng định cũ của báo cáo; ghi sau mỗi cấu hình | ~81 phút |
+| `run_repeated_cv.py --smoke` | 12.000 dòng, 2 lần lặp | ~2 phút |
+| `run_repeated_cv.py --status` | in bảng so sánh đã lưu | tức thì |
+
+**Điểm lưu theo dấu vân tay.** Từ review, `run_grid.py`, `run_ratio_grid.py` và `run_repeated_cv.py`
+chỉ dùng lại một tổ hợp đã lưu khi `config_hash` — băm của tham số pipeline, cách chia CV, dữ liệu
+huấn luyện và phiên bản thư viện — khớp cấu hình hiện tại. Sửa `src/modeling.py` hay nâng thư viện thì
+tổ hợp tương ứng tự huấn luyện lại; đổi chi phí thì chỉ các cột ngưỡng được tính lại từ điểm đã lưu.
+`run_search.py` ghi `config_hash` vào `best_params.json`, và notebook 05 chỉ dùng lại kết quả tìm kiếm
+khi nó khớp.
+
+| Tệp | Ghi vào git? |
+|---|---|
+| `reports/ratio_grid.csv` | Có — 48 dòng, có cột `brier` và `config_hash` |
+| `reports/ratio_grid.npz` | Không — điểm out-of-fold, `.gitignore` |
+| `reports/repeated_cv.csv` | Có — mỗi dòng một fold của một cấu hình |
+| `reports/repeated_cv_tests.csv` | Có — các cặp so sánh: hiệu, KTC 95% theo t hiệu chỉnh, p |
+| `reports/figures/04_ratio_grid.png` | Có |
+
+**Kết quả lần chạy 2026-10-11:** 48 tổ hợp, tổng thời gian huấn luyện **86 phút** (Random Forest chiếm 65 phút); PR-AUC cao nhất 0,8565 (XGBoost + `class_weight` r = 0,1). CV lặp **81 phút**: 9 cấu hình XGBoost × 25 fold, Random Forest + SMOTE và + `class_weight` × 15 fold. Mọi cấu hình XGBoost hoà với cấu hình có trung bình cao nhất (`class_weight` r = 0,3, 0,8589), nên notebook 04 §5.8 chọn **`xgboost` + `none`**; hai khẳng định cũ về Random Forest không còn đứng (khoảng tin cậy chứa 0). Chi tiết: [04 §3.6](04-thiet-ke-mo-hinh-ml.md), notebook 04 §5.6–5.8.
+
+**Máy ngủ giữa chừng.** `total_seconds` của tổ hợp đang chạy lúc máy ngủ bị cộng cả thời gian ngủ
+(lần chạy này: Random Forest + `class_weight` r = 1 ghi 948 phút, Decision Tree + SMOTE r = 0,1 ghi
+45 phút). Xoá dòng đó khỏi `reports/ratio_grid.csv` rồi chạy lại đúng lệnh cũ — chỉ tổ hợp đó huấn
+luyện lại. Kết quả PR-AUC không bị ảnh hưởng, chỉ cột thời gian.
+
 ## Giai đoạn 4 — Tinh chỉnh và kiểm chứng (T-24…T-28)
 
 Chạy lại giai đoạn 4 từ đầu: tìm kiếm siêu tham số, đánh giá trên tập kiểm thử, chia theo thời
@@ -248,8 +298,10 @@ ls reports/grid_results.npz
 ```
 
 Bước 4 có thể thay bằng mở `notebooks/05_advanced_models.ipynb` trong VS Code / Jupyter rồi
-**Run All**. Notebook thấy `reports/search_results.csv` nên **bỏ qua** bước tìm kiếm; nếu tệp
-đó chưa có, nó tự chạy tìm kiếm ngay trong notebook (thêm ~20 phút).
+**Run All**. Notebook chỉ **bỏ qua** bước tìm kiếm khi `config_hash` trong `reports/best_params.json`
+khớp dấu vân tay của cấu hình tìm kiếm hiện tại (không gian tham số, số lần thử, cách chia CV, dữ liệu,
+phiên bản thư viện — từ review 2026-10-10); thiếu tệp hay lệch dấu vân tay thì nó tự chạy tìm kiếm
+ngay trong notebook (thêm ~20 phút).
 
 `--ExecutePreprocessor.timeout=3600` là bắt buộc: mặc định `nbconvert` cắt mỗi ô sau 600 giây,
 mà ô chia theo thời gian (mục 5 của notebook) chạy khoảng 9 phút trên 12 lõi — máy chậm hơn sẽ
@@ -320,6 +372,19 @@ dưới đây phải lặp lại tới chữ số cuối (xem §4.6):
 Nếu dòng "Cấu hình được chọn" ở mục 3.1 của notebook ra **TINH CHỈNH** thay vì **MẶC ĐỊNH** thì
 lần chạy đó đã khác lần này — kiểm tra lại số lõi và phiên bản `xgboost`.
 
+**Lần chạy lại sau review (2026-10-11)** — cấu hình cuối đổi thành `xgboost + none` (§3.7):
+
+| Mốc | Giá trị |
+|---|---|
+| Thời gian tìm kiếm | 13,2 phút; 30 kết quả trùng lần trước |
+| Hiệu tinh chỉnh − mặc định trên OOF | +0,0034 [−0,0028, +0,0097] → **giữ cấu hình mặc định** (`reports/final_choice.json`) |
+| τ\* trên OOF ngẫu nhiên (tham khảo) | 0,0468 |
+| PR-AUC trên tập test | **0,828** [0,747 – 0,900] — AC-M1 đạt theo ước lượng điểm |
+| Tại τ\* = 0,0468 | recall 0,789 (75/95), precision 0,862; AC-M2 nghiệm thu ở notebook 06 §7 |
+| Chia theo thời gian | PR-AUC 0,773; τ\* chọn trên ngày 1 cho precision ngày 2 = 0,365 |
+| Trùng gần đúng train/test (§6.1) | 2.218 dòng test, 0 gian lận; PR-AUC 0,8279 → 0,8280 |
+| Thời gian chạy notebook 05 | 17,9 phút |
+
 #### Điều kiện dừng
 
 Notebook có `assert` ở những chỗ sau; ô nào đỏ thì **dừng lại**, không tick việc tương ứng:
@@ -329,8 +394,12 @@ Notebook có `assert` ở những chỗ sau; ô nào đỏ thì **dừng lại**
 | `tập kiểm thử phải trùng với notebook 03 (95 gian lận)` | cách chia đã đổi — mọi con số không còn so được với giai đoạn 2–3 |
 | `cần 30 lần thử` | `search_results.csv` là bản chạy thử hoặc bị cắt |
 | `PR-AUC > 0,95 — dừng lại rà rò rỉ` | gần như chắc chắn rò rỉ, xem [08 §3.1](08-ke-hoach-kiem-thu.md) |
-| `T-25 chưa đạt — không tick` | AC-M1 hoặc AC-M2 trượt |
 | ô `pytest tests/test_no_leakage.py` trả mã khác 0 | T-28 trượt — đọc đầu ra để biết ô nào |
+| `có vụ gian lận trùng đặc trưng ở cả hai tập` | trùng gần đúng (V1–V28, `Amount`) giữa train và test có gian lận — rò rỉ (§6.1 của notebook) |
+
+Từ review 2026-10-10, AC-M1 và AC-M2 **không** còn là `assert`: notebook in ĐẠT / KHÔNG ĐẠT, còn
+AC-M2 nghiệm thu ở ngưỡng mặc định trong notebook 06 §7 và ghi vào `metrics.json → acceptance`
+([11](11-review-ml-va-ke-hoach-sua.md) M1). Một tiêu chí trượt là kết quả cần báo cáo, không phải lỗi.
 
 `run_search.py` cũng tự in `!! BÁO ĐỘNG: PR-AUC > 0,95` ở cuối nếu gặp.
 
@@ -408,15 +477,17 @@ done
 
 | Notebook | Việc | Thời gian (12 lõi) |
 |---|---|---|
-| `06_threshold_and_cost` | T-29, T-30, T-31 | khoảng 3,5 phút (phần lớn là bootstrap) |
-| `07_explainability` | T-32, T-33 | khoảng 2 phút (SHAP trên toàn tập test: 35 giây) |
-| `06b_autoencoder` | T-34 (tùy chọn) | khoảng 4 phút (autoencoder: 2,5 phút) |
+| `06_threshold_and_cost` | T-29, T-30, T-31, nghiệm thu AC-M2 (§7), đối chứng ngày 1 → ngày 2 (§8) | khoảng 8,5 phút (bootstrap, điểm forward-chaining, giao thức ngày 1 → ngày 2) |
+| `07_explainability` | T-32, T-33 | khoảng 1,5–2 phút (SHAP trên toàn tập test: 14 giây) |
+| `06b_autoencoder` | T-34 (tùy chọn) | khoảng 4 phút (autoencoder: 1,7 phút) |
 
 ### 5.2 Hiện vật sinh ra
 
 | Tệp | Nguồn | Nội dung |
 |---|---|---|
-| `reports/threshold_comparison.csv` | 06 | bảng bắt buộc 04 §6.4: 5 phương án × chỉ số trên test, kèm KTC và số OOF |
+| `reports/threshold_comparison.csv` | 06 | bảng bắt buộc 04 §6.4: 6 phương án × chỉ số trên test, kèm KTC và số trên điểm chọn ngưỡng |
+| `reports/acceptance.csv` | 06 | AC-M2 tại ngưỡng mặc định, tại τ\* tự do và tại ngưỡng lớn nhất còn recall 0,75 |
+| `reports/threshold_protocol.csv` | 06 | đối chứng ngày 1 → ngày 2: cảnh báo/ngày ước tính và thật theo hai giao thức sinh điểm |
 | `reports/cost_sensitivity.csv` | 06 | 11 tỷ lệ chi phí 5:1 → 100:1: τ\*, chỉ số OOF và test, độ hối tiếc |
 | `reports/shap_ranking.csv` | 07 | 31 đặc trưng: `mean|SHAP|`, các hạng thống kê của T-15, hệ số hồi quy logistic |
 | `reports/error_analysis.csv` | 07 | 8 FN + 8 FP điểm cao nhất, top SHAP đẩy lên / kéo xuống |
@@ -432,7 +503,23 @@ done
 
 Không notebook nào ghi vào `models/`. Việc đó là của notebook 08 (T-35, T-36).
 
-### 5.3 Số đối chiếu (lần chạy 2026-09-25, 12 lõi)
+### 5.3 Số đối chiếu
+
+**Lần chạy lại sau review (2026-10-11, mô hình `xgboost + none`, ngưỡng chọn trên điểm forward-chaining):**
+
+| Mốc | Giá trị |
+|---|---|
+| Điểm chọn ngưỡng | 181.584 giao dịch, 249 gian lận, 1,45 ngày, PR-AUC 0,783 |
+| Ngưỡng mặc định (chi phí nhỏ nhất trong ≤ 200 cảnh báo/ngày) | **0,2675** — test: TP 72, FP 3, FN 23, recall 0,758, 187 cảnh báo/ngày |
+| τ\* không ràng buộc | 0,0191 — test: TP 78, FP 19, FN 17, chi phí 2.066 EUR |
+| Hiệu chi phí τ\* − 0,5 trên test | −722 [−1.347, −238] (cố định); −169 [−673, +105] (theo số tiền) |
+| τ\* không đổi trên dải tỷ lệ | 15:1 → 75:1 |
+| τ_chặn (precision ≥ 95%) | 0,9995 |
+| SHAP top 3 | V4, V14, V12; sai số cộng 2,4·10⁻⁵ |
+| Autoencoder PR-AUC | 0,329 [0,246 – 0,438] |
+
+**Lần chạy 2026-09-25 (mô hình trước, `xgboost + class_weight`, ngưỡng chọn trên OOF ngẫu nhiên)** — giữ để
+đối chiếu lịch sử:
 
 | Mốc | Giá trị |
 |---|---|
@@ -514,7 +601,7 @@ tra tái lập. Cấu trúc từng tệp nằm ở [06 §6](06-thiet-ke-luu-tru.
 
 | Bước | Thời gian (12 lõi) | Phần nặng |
 |---|---|---|
-| notebook 08 | 5–10 phút tùy tải máy | điểm out-of-fold 1,5–4 phút, bootstrap 1,5–2 phút, SHAP toàn tập kiểm thử 30–50 giây |
+| notebook 08 | 4–10 phút tùy tải máy | điểm out-of-fold ngẫu nhiên và điểm forward-chaining ~1 phút, bootstrap 1,5 phút, SHAP toàn tập kiểm thử 13–50 giây |
 | `check_reproducibility.py` | khoảng 70 phút | notebook 05 (33 phút: bootstrap, ba cách chia), 08 và 06b |
 | `check_reproducibility.py --only 08` | 5–10 phút | kiểm nhanh sau khi sửa notebook 08 |
 
@@ -528,17 +615,25 @@ Hai lần chạy notebook 08 trong cùng ngày mất 4,6 và 9,4 phút: máy ch�
 
 | Tệp | Kích thước | Nội dung | Trong git? |
 |---|---|---|---|
-| `models/model.joblib` | 1,2 MB | pipeline hoàn chỉnh: `RobustScaler` cho `Amount` → `XGBClassifier` | Không |
-| `models/explainer.joblib` | 4,2 MB | `shap.TreeExplainer` của bước `clf` | Không |
-| `models/threshold.json` | < 1 KB | τ\* = 0,023173 và 4 phương án, chọn trên out-of-fold | Nên có |
-| `models/metrics.json` | 1,6 MB | 12 khóa bắt buộc + 6 khóa bổ sung cho UI-04 | Có cân nhắc |
-| `models/oof_scores.npz` | 0,8 MB | điểm out-of-fold cho `/threshold/optimize` — thêm ở giai đoạn 7 | Không (`.gitignore`) |
+| `models/model.joblib` | 0,9 MB | pipeline hoàn chỉnh: `RobustScaler` cho `Amount` → `XGBClassifier` (cấu hình `FINAL_*`) | Không |
+| `models/explainer.joblib` | 3,2 MB | `shap.TreeExplainer` của bước `clf` | Không |
+| `models/threshold.json` | < 1 KB | ngưỡng mặc định 0,267544 (`min_cost_within_budget`, `temporal_out_of_fold`) và 6 phương án | Nên có |
+| `models/metrics.json` | 1,6 MB | 12 khóa bắt buộc + các khóa bổ sung (`selection`, `acceptance`…) | Có cân nhắc |
+| `models/oof_scores.npz` | 0,6 MB | điểm chọn ngưỡng forward-chaining cho API-11, API-12, API-17 (`method`) | Không (`.gitignore`) |
 | `data/sample_pool.json` | 0,2 MB | 200 mẫu, bốn nhóm | Không (`.gitignore`) |
 | `data/test_set.parquet` | 15,9 MB | thêm cột `risk_score` | Không (`.gitignore`) |
 | `reports/figures/08_sample_pool.png` | | điểm rủi ro của 200 mẫu theo nhóm | Có |
 | `reports/reproducibility.csv` | | kết quả T-38, từng dòng | Có |
 
-### 6.3 Số đối chiếu (lần chạy 2026-09-27, 12 lõi)
+### 6.3 Số đối chiếu
+
+**Lần xuất sau review (2026-10-11):** `model_version = xgb_none_v2`; PR-AUC tập kiểm thử 0,8279 [0,7472 –
+0,8996]; ngưỡng mặc định 0,267544 — TP 72, FP 3, FN 23, TN 56.648; giải thích một giao dịch trung vị 11 ms;
+thư viện mẫu `fraud_easy` 26, `fraud_hard` 24, `legit_easy` 130, `legit_hard` 20; dấu vân tay điểm test /
+điểm chọn ngưỡng `0092b5d62542631a` / `6fbbeafe8d2547ab`. Tám lần đối chiếu với notebook 04–07 đều trong dung
+sai (điểm out-of-fold với lưới: lệch 0).
+
+**Lần chạy 2026-09-27 (mô hình trước)** — giữ để đối chiếu lịch sử:
 
 Notebook 08 tính lại mọi con số từ đầu rồi so với bảng mà notebook 03–07 đã ghi ở những phiên chạy
 khác. Ô nào lệch quá dung sai thì notebook dừng ở `assert`.
@@ -566,6 +661,10 @@ Chạy lại trên cùng máy thì hai dấu vân tay phải giữ nguyên. Khá
 PR-AUC có thể vẫn nằm trong dung sai.
 
 ### 6.4 Kiểm tra tái lập — T-38
+
+**Lần kiểm 2026-10-11 (sau review, `xgb_none_v2`):** chạy lại 9 notebook 01 → 08 trong kernel sạch (46,5 phút, 2026-10-11): PR-AUC 0,8278893033 → 0,8278893033, lệch 0; 13 con số chính và ngưỡng mặc định lệch 0; dấu vân tay điểm test và điểm chọn ngưỡng trùng; 20/20 bảng `reports/*.csv` trùng hoàn toàn. Thời gian từng notebook: 01 1,3 · 02 0,6 ·
+03 2,2 · 04 7,7 · 05 16,4 · 06 8,6 · 06b 4,3 · 07 1,6 · 08 3,9 phút. Lần kiểm 2026-09-27 dưới đây là của mô hình
+trước.
 
 Chạy `scripts/check_reproducibility.py` ngày 2026-09-27, máy 12 lõi. Ảnh chụp TRƯỚC là hiện vật
 của lần chạy notebook 08 đầu tiên; sau đó chạy lại cả 9 notebook, mỗi notebook một kernel mới.
@@ -613,10 +712,10 @@ khi" ở T-35, T-36, T-37:
 
 | Ca | Kiểm |
 |---|---|
-| `test_t35_model_is_a_complete_pipeline` | hai bước `preprocess` → `clf`, `RobustScaler` đã fit, `feature_names_in_` đúng `FEATURE_ORDER` |
+| `test_t35_model_is_a_complete_pipeline` | `preprocess` → `clf` (cộng bước `resample` nếu cấu hình cuối có lấy mẫu lại), `RobustScaler` đã fit, `feature_names_in_` đúng `FEATURE_ORDER` |
 | `test_t35_reloaded_model_reproduces_exported_scores` | chấm lại `test_set.parquet` trùng từng bit với `risk_score` và `test_scores` |
 | `test_t36_json_artifacts_follow_the_documented_structure` | `validate_threshold`, `validate_metrics`; ba tệp cùng `model_version` |
-| `test_t36_headline_matches_exported_scores` | PR-AUC và ma trận nhầm lẫn tính lại từ `test_scores`; AC-M1, AC-M2 |
+| `test_t36_headline_matches_exported_scores` | PR-AUC và ma trận nhầm lẫn tính lại từ `test_scores`; AC-M1; khối `acceptance` nói đúng điều các con số nói (AC-M2 là kết quả được ghi lại, không phải điều kiện xuất) |
 | `test_t36_explainer_is_additive_on_the_exported_model` | `base + ΣSHAP` = margin trên 95 vụ gian lận + 200 giao dịch |
 | `test_t37_sample_pool_meets_the_task_conditions` | `validate_sample_pool`: mỗi nhóm hard ≥ 20 |
 | `test_t37_sample_pool_scores_are_what_the_model_returns` | chấm lại 30 cột thô của 200 mẫu ra đúng `risk_score` |
@@ -918,10 +1017,10 @@ docker compose exec db psql -U fraud -d fraud \
 ### 8.4 Kiểm tay trước buổi bảo vệ
 
 - [ ] Mở cả bốn màn hình, console (F12) không có dòng đỏ.
-- [ ] Màn hình Ngưỡng: chọn "Mặc định 0,5" rồi kéo thanh trượt về dấu ▲ τ\* — ô "Gian lận bắt được"
+- [ ] Màn hình Ngưỡng: chọn "0,5 — mặc định của thư viện" rồi kéo thanh trượt về dấu ▲ mặc định — ô "Gian lận bắt được"
       tăng, ô "Chi phí mỗi ngày" giảm, dòng chênh lệch đổi màu.
 - [ ] Gõ chi phí bỏ lọt 600 — vạch cam "tối ưu" dời sang trái, xuất hiện phương án "Tối ưu với tham số
-      chi phí đang nhập". Đưa lại 122,21.
+      chi phí đang nhập". Đưa lại 115,94.
 - [ ] Hàng đợi: nạp nhóm "Gian lận khó" từ thư viện mẫu, mở một dòng, bấm `A` (báo động sai) — nhãn
       thật hiện "Gian lận — ✗ khác kết luận của bạn". Đây là ví dụ FR-44 đáng trình diễn.
 - [ ] Phát lại ở 600× khoảng một phút, bấm một cảnh báo để mở chi tiết.
